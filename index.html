@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>زينبي و فوفو - أونلاين</title>
+    <title>ألعاب زينبي و فوفو</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -24,42 +24,34 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
-        const appId = 'arenstore_final_game_v2';
+        const appId = 'arenstore_multi_games_v1';
 
         let user = null;
         let gameId = null;
         let myRole = null; 
-        let gameState = { status: 'none', ball: { x: 140, y: 180, vx: 5, vy: 5 }, scores: { z: 0, f: 0 } };
         let isHost = false;
+        let currentRoomData = null;
         let unsubscribe = null;
 
         onAuthStateChanged(auth, (u) => { 
-            if (u) {
-                user = u;
-                document.getElementById('loading-overlay').classList.add('hidden');
-            } else {
-                signInAnonymously(auth).catch(err => console.error(err));
-            }
+            if (u) { user = u; document.getElementById('loading-overlay').classList.add('hidden'); }
+            else { signInAnonymously(auth); }
         });
 
+        // نظام الغرف
         window.createRoom = async () => {
             const rid = Math.floor(1000 + Math.random() * 9000).toString();
             gameId = `room_${rid}`;
-            myRole = 'z';
-            isHost = true;
-            try {
-                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), {
-                    roomId: rid,
-                    z_id: user.uid,
-                    status: 'waiting',
-                    scores: { z: 0, f: 0 },
-                    ball: { x: 140, y: 180, vx: 5, vy: 5 }
-                });
-                document.getElementById('room-id').innerText = rid;
-                document.getElementById('menu').classList.add('hidden');
-                document.getElementById('waiting').classList.remove('hidden');
-                listen();
-            } catch (e) { alert("خطأ في السيرفر"); }
+            myRole = 'z'; isHost = true;
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), {
+                roomId: rid, z_id: user.uid, status: 'waiting', gameType: 'none',
+                xo: { board: Array(9).fill(""), turn: "z" },
+                tug: { score: 0 },
+                house: { z_houses: 0, f_houses: 0, winner: null }
+            });
+            document.getElementById('room-id-display').innerText = rid;
+            showView('waiting-room');
+            listen();
         };
 
         window.joinRoom = async () => {
@@ -69,9 +61,8 @@
             const ref = doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId);
             const snap = await getDoc(ref);
             if (snap.exists()) {
-                myRole = 'f';
-                isHost = false;
-                await updateDoc(ref, { f_id: user.uid, status: 'playing' });
+                myRole = 'f'; isHost = false;
+                await updateDoc(ref, { f_id: user.uid, status: 'lobby' });
                 listen();
             } else { alert("الغرفة غير موجودة"); }
         };
@@ -79,133 +70,149 @@
         function listen() {
             if (unsubscribe) unsubscribe();
             unsubscribe = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), (s) => {
-                if (!s.exists()) {
-                    exitToMenu(); // إذا قام الطرف الآخر بحذف الغرفة، نخرج تلقائياً
-                    return;
-                }
-                gameState = s.data();
-                if (gameState.status === 'playing') {
-                    document.getElementById('lobby-view').classList.add('hidden');
-                    document.getElementById('game-view').classList.remove('hidden');
-                    updateUI();
-                }
+                if (!s.exists()) { exitToMenu(); return; }
+                currentRoomData = s.data();
+                handleNavigation(currentRoomData);
             });
         }
 
-        // خاصية التخطي / الخروج
-        window.skipGame = async () => {
-            if (!gameId) return;
-            const confirmSkip = confirm("هل تريد تخطي هذه اللعبة والعودة للقائمة؟");
-            if (confirmSkip) {
-                try {
-                    // إذا كنت المستضيف، احذف الغرفة نهائياً
-                    if (isHost) {
-                        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId));
-                    }
-                    exitToMenu();
-                } catch (e) { console.error(e); }
+        function handleNavigation(data) {
+            if (data.status === 'lobby') showView('game-selector');
+            else if (data.status === 'playing') {
+                if (data.gameType === 'xo') renderXO();
+                else if (data.gameType === 'tug') renderTug();
+                else if (data.gameType === 'house') renderHouse();
+                showView('game-screen');
             }
+        }
+
+        function showView(id) {
+            ['main-menu', 'waiting-room', 'game-selector', 'game-screen'].forEach(v => document.getElementById(v).classList.add('hidden'));
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        // اختيار اللعبة (للمستضيف فقط)
+        window.selectGame = async (type) => {
+            if (!isHost) return;
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), {
+                gameType: type, status: 'playing',
+                xo: { board: Array(9).fill(""), turn: "z" },
+                tug: { score: 0 },
+                house: { z_houses: 0, f_houses: 0, winner: null }
+            });
         };
 
-        function exitToMenu() {
+        // --- منطق لعبة XO ---
+        function renderXO() {
+            const container = document.getElementById('game-content');
+            const xoData = currentRoomData.xo;
+            let html = `<div class="text-center mb-4 font-bold">${xoData.turn === 'z' ? 'دور زينبي' : 'دور فوفو'}</div>`;
+            html += `<div class="grid grid-cols-3 gap-2 w-64 mx-auto">`;
+            xoData.board.forEach((cell, i) => {
+                html += `<button onclick="playXO(${i})" class="h-20 w-20 bg-slate-800 rounded-xl text-3xl font-black">${cell === 'z' ? 'X' : (cell === 'f' ? 'O' : '')}</button>`;
+            });
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+        window.playXO = async (i) => {
+            const xo = currentRoomData.xo;
+            if (xo.turn !== myRole || xo.board[i] !== "") return;
+            xo.board[i] = myRole;
+            xo.turn = myRole === 'z' ? 'f' : 'z';
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), { xo });
+        };
+
+        // --- منطق جر الحبل (السرعة) ---
+        function renderTug() {
+            const score = currentRoomData.tug.score;
+            document.getElementById('game-content').innerHTML = `
+                <div class="text-center mb-8">اسحب الخط لجهتك بالضغط السريع!</div>
+                <div class="relative w-full h-12 bg-slate-800 rounded-full overflow-hidden">
+                    <div id="tug-line" class="absolute h-full w-2 bg-pink-500 transition-all duration-100" style="left: calc(50% + ${score}px)"></div>
+                </div>
+                <button onclick="pressTug()" class="mt-10 w-32 h-32 bg-pink-600 rounded-full font-black text-xl shadow-xl active:scale-90 mx-auto block">اضغط!</button>
+            `;
+        }
+        window.pressTug = async () => {
+            let score = currentRoomData.tug.score;
+            score += (myRole === 'z' ? -10 : 10);
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), { "tug.score": score });
+        };
+
+        // --- منطق تجميع البيوت ---
+        function renderHouse() {
+            const h = currentRoomData.house;
+            document.getElementById('game-content').innerHTML = `
+                <div class="flex justify-around mb-8">
+                    <div class="text-center">🏠 زينبي: ${h.z_houses}</div>
+                    <div class="text-center">🏠 فوفو: ${h.f_houses}</div>
+                </div>
+                <div class="grid grid-cols-4 gap-4">
+                    ${Array(12).fill(0).map((_, i) => `<button onclick="collectHouse()" class="h-16 bg-slate-800 rounded-lg text-2xl">🏠</button>`).join('')}
+                </div>
+            `;
+        }
+        window.collectHouse = async () => {
+            const field = myRole === 'z' ? "house.z_houses" : "house.f_houses";
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), { [field]: currentRoomData.house[myRole === 'z' ? 'z_houses' : 'f_houses'] + 1 });
+        };
+
+        window.exitToMenu = async () => {
+            if (isHost && gameId) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId));
             if (unsubscribe) unsubscribe();
-            gameId = null;
-            isHost = false;
-            gameState.status = 'none';
-            document.getElementById('game-view').classList.add('hidden');
-            document.getElementById('waiting').classList.add('hidden');
-            document.getElementById('lobby-view').classList.remove('hidden');
-            document.getElementById('menu').classList.remove('hidden');
-        }
-
-        function updateUI() {
-            document.getElementById('sz').innerText = gameState.scores.z;
-            document.getElementById('sf').innerText = gameState.scores.f;
-            document.getElementById('ball').style.left = gameState.ball.x + 'px';
-            document.getElementById('ball').style.top = gameState.ball.y + 'px';
-            document.getElementById('role').innerText = myRole === 'z' ? "زينبي" : "فوفو";
-        }
-
-        setInterval(async () => {
-            if (isHost && gameState.status === 'playing' && gameId) {
-                let b = gameState.ball;
-                b.x += b.vx; b.y += b.vy;
-                if (b.x <= 0 || b.x >= 260) b.vx *= -1;
-                if (b.y <= 0) { gameState.scores.z++; b = { x: 140, y: 180, vx: 5, vy: 5 }; }
-                if (b.y >= 360) { gameState.scores.f++; b = { x: 140, y: 180, vx: 5, vy: -5 }; }
-                
-                const ref = doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId);
-                await updateDoc(ref, { ball: b, scores: gameState.scores }).catch(() => {});
-            }
-        }, 50);
-
-        window.hit = async () => {
-            if (gameState.status !== 'playing') return;
-            let b = gameState.ball;
-            if ((myRole === 'z' && b.y > 250 && b.vy > 0) || (myRole === 'f' && b.y < 100 && b.vy < 0)) {
-                b.vy *= -1.1;
-                b.vx += (Math.random() - 0.5) * 6;
-                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), { ball: b });
-            }
+            gameId = null; isHost = false; showView('main-menu');
         };
     </script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@900&display=swap');
-        body { font-family: 'Cairo', sans-serif; background: #020617; touch-action: none; overflow: hidden; color: white; }
-        .arena { background: #0f172a; border: 2px solid rgba(255,255,255,0.1); border-radius: 40px; position: relative; width: 300px; height: 400px; overflow: hidden; }
-        #ball { position: absolute; width: 40px; height: 40px; background: #fff; border-radius: 50%; box-shadow: 0 0 20px #fff; display: flex; align-items: center; justify-content: center; font-size: 20px; transition: all 0.05s linear; }
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
+        body { font-family: 'Cairo', sans-serif; background: #020617; color: white; overflow: hidden; touch-action: none; }
+        .glass { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); }
     </style>
 </head>
 <body class="h-screen flex items-center justify-center">
 
-    <div id="loading-overlay" class="fixed inset-0 bg-slate-950 z-50 flex flex-col items-center justify-center">
+    <div id="loading-overlay" class="fixed inset-0 z-[2000] bg-slate-950 flex flex-col items-center justify-center">
         <div class="w-10 h-10 border-4 border-pink-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p>جاري تحميل السيرفر...</p>
+        <p>جاري الاتصال...</p>
     </div>
 
-    <div id="lobby-view" class="w-full max-w-sm p-6 text-center">
-        <div id="menu">
-            <h1 class="text-5xl font-black mb-10 bg-gradient-to-r from-pink-500 to-cyan-500 bg-clip-text text-transparent italic">زينبي و فوفو</h1>
-            <button onclick="createRoom()" class="w-full py-5 bg-pink-600 rounded-3xl font-bold text-xl mb-4 shadow-lg active:scale-95">إنشاء غرفة</button>
-            <div class="flex gap-2">
-                <input id="room-input" type="number" placeholder="رقم الغرفة" class="flex-1 bg-slate-900 rounded-3xl px-4 py-4 text-center border border-slate-800 outline-none">
-                <button onclick="joinRoom()" class="px-6 py-4 bg-cyan-600 rounded-3xl font-bold active:scale-95">دخول</button>
-            </div>
-        </div>
-        <div id="waiting" class="hidden">
-            <div class="bg-slate-900 p-10 rounded-[40px] border border-white/5 mb-6 relative">
-                <button onclick="exitToMenu()" class="absolute top-4 right-4 text-slate-500 text-xs font-bold">إلغاء ✕</button>
-                <p class="text-xs text-slate-400 mb-2">رقم الغرفة</p>
-                <h2 id="room-id" class="text-6xl font-black">0000</h2>
-            </div>
-            <p class="animate-pulse text-pink-500 font-bold">بانتظار الطرف الآخر...</p>
+    <!-- القائمة الرئيسية -->
+    <div id="main-menu" class="w-full max-w-sm p-6 text-center">
+        <h1 class="text-5xl font-black mb-12 italic bg-gradient-to-r from-pink-500 to-cyan-500 bg-clip-text text-transparent">زينبي و فوفو</h1>
+        <button onclick="createRoom()" class="w-full py-5 bg-pink-600 rounded-3xl font-black text-xl mb-4 shadow-xl active:scale-95">إنشاء غرفة</button>
+        <div class="flex gap-2">
+            <input id="room-input" type="number" placeholder="رقم الغرفة" class="flex-1 bg-slate-900 border border-slate-800 rounded-3xl px-6 py-4 text-center font-bold outline-none">
+            <button onclick="joinRoom()" class="px-8 py-4 bg-cyan-600 rounded-3xl font-black active:scale-95">دخول</button>
         </div>
     </div>
 
-    <div id="game-view" class="hidden fixed inset-0 flex flex-col items-center justify-center p-6 bg-slate-950">
-        <!-- زر التخطي في الأعلى -->
-        <button onclick="skipGame()" class="absolute top-4 left-4 bg-white/10 px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest active:bg-red-500 transition-colors">تخطي / خروج ↩</button>
+    <!-- شاشة الانتظار -->
+    <div id="waiting-room" class="hidden text-center p-6">
+        <div class="glass p-10 rounded-[40px] mb-8 relative">
+            <button onclick="exitToMenu()" class="absolute top-4 right-4 text-slate-500">✕</button>
+            <p class="text-slate-400 mb-2">رقم الغرفة</p>
+            <h2 id="room-id-display" class="text-7xl font-black tracking-widest">0000</h2>
+        </div>
+        <p class="animate-pulse text-pink-400">بانتظار الطرف الآخر...</p>
+    </div>
 
-        <div class="w-full max-w-[300px] flex justify-between mb-6">
-            <div class="text-center bg-slate-900 p-3 rounded-2xl border-b-4 border-pink-500 min-w-[70px]">
-                <div class="text-[10px] text-pink-400 uppercase">زينبي</div>
-                <div id="sz" class="text-2xl font-black">0</div>
-            </div>
-            <div id="role" class="self-center bg-white/5 px-4 py-1 rounded-full text-[10px] border border-white/10 uppercase font-bold">---</div>
-            <div class="text-center bg-slate-900 p-3 rounded-2xl border-b-4 border-cyan-500 min-w-[70px]">
-                <div class="text-[10px] text-cyan-400 uppercase">فوفو</div>
-                <div id="sf" class="text-2xl font-black">0</div>
-            </div>
+    <!-- اختيار اللعبة -->
+    <div id="game-selector" class="hidden w-full max-w-sm p-6 text-center">
+        <h2 class="text-2xl font-black mb-8">اختر اللعبة</h2>
+        <div class="space-y-4">
+            <button onclick="selectGame('xo')" class="w-full py-4 bg-slate-800 rounded-2xl font-bold hover:bg-pink-600 transition-colors">لعبة X-O</button>
+            <button onclick="selectGame('tug')" class="w-full py-4 bg-slate-800 rounded-2xl font-bold hover:bg-cyan-600 transition-colors">تحدي السرعة (جر الحبل)</button>
+            <button onclick="selectGame('house')" class="w-full py-4 bg-slate-800 rounded-2xl font-bold hover:bg-orange-600 transition-colors">تجميع البيوت 🏠</button>
         </div>
-        
-        <div class="arena" onmousedown="hit()" ontouchstart="hit()">
-            <div id="ball">⚽</div>
-            <div class="absolute top-0 w-full h-1 bg-cyan-500 shadow-[0_4px_10px_cyan]"></div>
-            <div class="absolute bottom-0 w-full h-1 bg-pink-500 shadow-[0_-4px_10px_pink]"></div>
-            <div class="absolute top-1/2 w-full h-[1px] bg-white/5"></div>
+        <p id="guest-msg" class="mt-6 text-slate-500 text-sm hidden">بانتظار اختيار المستضيف للعبة...</p>
+    </div>
+
+    <!-- شاشة اللعب -->
+    <div id="game-screen" class="hidden fixed inset-0 flex flex-col items-center justify-center p-6 bg-slate-950">
+        <button onclick="selectGame('none')" class="absolute top-4 left-4 bg-white/10 px-4 py-2 rounded-full text-xs">تغيير اللعبة ↩</button>
+        <div id="game-content" class="w-full max-w-sm">
+            <!-- محتوى اللعبة يظهر هنا -->
         </div>
-        
-        <p class="mt-8 text-slate-500 text-[10px] font-bold uppercase tracking-widest">المس الملعب لضرب الكرة</p>
     </div>
 
 </body>
