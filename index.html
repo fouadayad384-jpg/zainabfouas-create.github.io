@@ -8,7 +8,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, doc, setDoc, onSnapshot, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot, updateDoc, getDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         const firebaseConfig = {
@@ -24,7 +24,7 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
-        const appId = 'arenstore_pro_v3';
+        const appId = 'zf_ultimate_v9';
 
         let user = null;
         let gameId = null;
@@ -34,6 +34,9 @@
         let unsubscribe = null;
         let currentData = null;
         let transitionLocked = false;
+        let botInterval = null;
+
+        const words = ["أحبك جداً", "بطل القصة", "سريع البرق", "ذكاء خارق", "تحدي كبير", "بغداد السلام", "نصر قريب", "قوة الإرادة", "مستقبل باهر", "صداقة أبدية", "فوز مستحق", "لعبة ممتعة", "تركيز عال", "كتابة سريعة", "إبداع بلا حدود"];
 
         onAuthStateChanged(auth, (u) => { 
             if (u) { user = u; document.getElementById('loading').classList.add('hidden'); }
@@ -43,49 +46,47 @@
         window.startBotMode = () => {
             isBotMode = true; isHost = true; myRole = 'z'; transitionLocked = false;
             currentData = {
-                gameType: 'none', status: 'lobby',
+                gameType: 'none', status: 'playing',
                 xo: { board: Array(9).fill(""), turn: "z" },
                 speed: { score: 50, winner: null },
-                dots: { lines: [], boxes: [], turn: 'z', scores: { z: 0, f: 0 } }
+                dots: { lines: [], boxes: [], turn: 'z', scores: { z: 0, f: 0 } },
+                typing: { currentWord: words[0], scores: { z: 0, f: 0 }, messages: [] },
+                chat: []
             };
             showView('game-selector');
+            startBotLogic();
         };
 
         window.createRoom = async () => {
             isBotMode = false; transitionLocked = false;
             const rid = Math.floor(1000 + Math.random() * 9999).toString();
-            gameId = `room_${rid}`;
-            myRole = 'z'; isHost = true;
+            gameId = `room_${rid}`; myRole = 'z'; isHost = true;
             await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), {
                 roomId: rid, z_id: user.uid, status: 'waiting', gameType: 'none',
                 xo: { board: Array(9).fill(""), turn: "z" },
                 speed: { score: 50, winner: null },
-                dots: { lines: [], boxes: [], turn: 'z', scores: { z: 0, f: 0 } }
+                dots: { lines: [], boxes: [], turn: 'z', scores: { z: 0, f: 0 } },
+                typing: { currentWord: words[Math.floor(Math.random()*words.length)], scores: { z: 0, f: 0 }, messages: [] },
+                chat: []
             });
             document.getElementById('room-id').innerText = rid;
-            showView('waiting-room');
-            listen();
+            showView('waiting-room'); listen();
         };
 
         window.joinRoom = async () => {
-            isBotMode = false;
-            const rid = document.getElementById('room-input').value;
-            if (!rid) return;
+            const rid = document.getElementById('room-input').value; if (!rid) return;
             gameId = `room_${rid}`;
-            const ref = doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId);
-            const snap = await getDoc(ref);
-            if (snap.exists()) {
-                myRole = 'f'; isHost = false;
-                await updateDoc(ref, { f_id: user.uid, status: 'lobby' });
-                listen();
-            } else { alert("الغرفة غير موجودة"); }
+            const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId));
+            if (snap.exists()) { myRole = 'f'; isHost = false; await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), { f_id: user.uid, status: 'lobby' }); listen(); }
+            else alert("الغرفة غير موجودة");
         };
 
         function listen() {
             if (unsubscribe) unsubscribe();
             unsubscribe = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), (s) => {
                 if (!s.exists()) { exit(); return; }
-                currentData = s.data();
+                const newData = s.data();
+                currentData = newData;
                 if (currentData.status === 'lobby') showView('game-selector');
                 else if (currentData.status === 'playing') renderGame();
             });
@@ -98,61 +99,254 @@
 
         window.selectGame = async (type) => {
             transitionLocked = false;
-            const initialData = {
-                gameType: type, 
-                status: (type === 'none' ? 'lobby' : 'playing'),
+            const init = {
+                gameType: type, status: 'playing',
                 xo: { board: Array(9).fill(""), turn: "z" },
                 speed: { score: 50, winner: null },
-                dots: { lines: [], boxes: [], turn: 'z', scores: { z: 0, f: 0 } }
+                dots: { lines: [], boxes: [], turn: 'z', scores: { z: 0, f: 0 } },
+                typing: { currentWord: words[Math.floor(Math.random()*words.length)], scores: { z: 0, f: 0 }, messages: [] }
             };
-            if (isBotMode) {
-                currentData = { ...currentData, ...initialData };
-                renderGame();
-                if (type === 'none') showView('game-selector');
-                return;
-            }
-            if (!isHost) return;
-            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), initialData);
+            if (isBotMode) { currentData = {...currentData, ...init}; renderGame(); return; }
+            if (isHost) await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), init);
         };
 
         function renderGame() {
             showView('game-view');
-            const type = currentData.gameType;
-            if (type === 'xo') renderXO();
-            else if (type === 'speed') renderSpeed();
-            else if (type === 'dots') renderDots();
-            else if (type === 'none') showView('game-selector');
+            const t = currentData.gameType;
+            if (t === 'typing') renderTyping();
+            else if (t === 'speed') renderSpeed();
+            else if (t === 'dots') renderDots();
+            else if (t === 'xo') renderXO();
+            else if (t === 'none') showView('game-selector');
         }
 
-        // --- XO Logic ---
-        function checkWinnerXO(board) {
-            const wins = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
-            for (let w of wins) {
-                if (board[w[0]] && board[w[0]] === board[w[1]] && board[w[0]] === board[w[2]]) return board[w[0]];
+        // --- Typing Challenge (Telegram Layout) ---
+        function renderTyping() {
+            const t = currentData.typing;
+            if (t.scores.z >= 15 || t.scores.f >= 15) {
+                const winner = t.scores.z >= 15 ? 'زينبي' : 'فوفو';
+                document.getElementById('content').innerHTML = `<div class="text-center py-20"><h2 class="text-5xl font-black text-yellow-400 animate-bounce">فوز ${winner} باللقب! 👑</h2></div>`;
+                setTimeout(() => selectGame('none'), 3000);
+                return;
             }
-            return board.includes("") ? null : "draw";
+
+            document.getElementById('content').innerHTML = `
+                <div class="flex flex-col h-full w-full max-w-lg bg-[#0e1621] rounded-3xl border border-white/10 shadow-2xl overflow-hidden">
+                    <div class="bg-[#17212b] p-4 flex justify-between items-center border-b border-black">
+                        <div class="flex gap-4">
+                            <span class="text-pink-500 font-black">Z: ${t.scores.z}</span>
+                            <span class="text-cyan-500 font-black">F: ${t.scores.f}</span>
+                        </div>
+                        <div class="text-xs text-blue-400 font-bold tracking-widest uppercase">الهدف: 15 نقطة</div>
+                    </div>
+                    
+                    <!-- Fixed Target Word -->
+                    <div class="bg-[#1c2938] py-4 text-center border-b border-blue-500/20">
+                        <p class="text-[10px] text-slate-500 mb-1 uppercase font-bold">الكلمة المطلوبة</p>
+                        <div class="text-3xl font-black text-white px-6 inline-block rounded-xl">${t.currentWord}</div>
+                    </div>
+
+                    <div id="typing-chat-body" class="flex-1 overflow-y-auto p-4 space-y-3 flex flex-col">
+                        ${t.messages.map(m => `
+                            <div class="flex ${m.role === myRole ? 'justify-start' : 'justify-end'}">
+                                <div class="${m.role === 'z' ? 'bg-pink-700' : 'bg-cyan-700'} text-white px-4 py-2 rounded-2xl shadow-lg text-sm max-w-[85%]">
+                                    ${m.text}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+
+                    <div class="bg-[#17212b] p-4 flex gap-2">
+                        <input id="chat-type-input" type="text" autocomplete="off" placeholder="اكتب الكلمة هنا..." 
+                            class="flex-1 bg-[#242f3d] text-white rounded-full px-6 py-3 outline-none focus:ring-2 ring-blue-500/50">
+                        <button onclick="sendTypingMsg()" class="bg-blue-600 text-white p-3 rounded-full shadow-lg active:scale-90 transition-all">
+                            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
+                        </button>
+                    </div>
+                </div>
+            `;
+            const chatBody = document.getElementById('typing-chat-body');
+            chatBody.scrollTop = chatBody.scrollHeight;
+            document.getElementById('chat-type-input').focus();
+        }
+
+        window.sendTypingMsg = async () => {
+            const input = document.getElementById('chat-type-input');
+            const val = input.value.trim();
+            if (!val) return;
+            
+            const t = currentData.typing;
+            const isCorrect = val === t.currentWord;
+            
+            const newMsg = { role: myRole, text: val, time: Date.now() };
+            t.messages.push(newMsg);
+            if (t.messages.length > 20) t.messages.shift();
+
+            if (isCorrect) {
+                t.scores[myRole]++;
+                t.currentWord = words[Math.floor(Math.random() * words.length)];
+            }
+
+            if (isBotMode) renderTyping();
+            else await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), { typing: t });
+            input.value = "";
+        };
+
+        // --- Perfect Grid Dots & Boxes ---
+        function renderDots() {
+            const d = currentData.dots; 
+            const size = 5; 
+            const gap = 64; 
+            const offset = 40;
+            const boxSize = gap - 4;
+
+            let html = `
+                <div class="flex flex-col items-center">
+                    <div class="flex justify-between w-full max-w-[320px] mb-8 font-black bg-slate-900 p-4 rounded-3xl border border-white/5">
+                        <div class="text-pink-500">زينبي: ${d.scores.z}</div>
+                        <div class="text-xs ${d.turn === myRole ? 'text-green-400 animate-pulse' : 'text-slate-500'} italic">${d.turn === myRole ? 'دورك' : 'انتظر...'}</div>
+                        <div class="text-cyan-500">فوفو: ${d.scores.f}</div>
+                    </div>
+
+                    <div class="relative bg-slate-950 p-4 rounded-[40px] border border-white/5" style="width: ${size*gap+20}px; height: ${size*gap+20}px;">
+            `;
+
+            // Boxes
+            for(let r=0; r<4; r++) for(let c=0; c<4; c++) {
+                const o = d.boxes.find(b => b.id === `b-${r}-${c}`)?.owner;
+                if(o) {
+                    html += `<div class="absolute flex items-center justify-center font-black rounded-xl transition-all duration-300" 
+                        style="top:${r*gap+offset+6}px; left:${c*gap+offset+6}px; width:${boxSize-8}px; height:${boxSize-8}px; 
+                        background:${o==='z'?'rgba(236,72,153,0.3)':'rgba(6,182,212,0.3)'}; border:1px solid ${o==='z'?'#ec4899':'#06b6d4'};">
+                        <span class="text-xl ${o==='z'?'text-pink-300':'text-cyan-300'}">${o==='z'?'Z':'F'}</span>
+                    </div>`;
+                }
+            }
+
+            // Horizontal Lines
+            for(let r=0; r<size; r++) for(let c=0; c<size-1; c++) {
+                const t = d.lines.includes(`h-${r}-${c}`);
+                html += `<div onclick="clickLine('h-${r}-${c}')" class="absolute cursor-pointer group" 
+                    style="top:${r*gap+offset-4}px; left:${c*gap+offset+10}px; width:${gap-20}px; height:12px; z-index:10;">
+                    <div class="w-full h-full rounded-full transition-all duration-200 ${t ? 'bg-white shadow-[0_0_10px_white]' : 'bg-white/5 group-hover:bg-white/20'}"></div>
+                </div>`;
+            }
+
+            // Vertical Lines
+            for(let r=0; r<size-1; r++) for(let c=0; c<size; c++) {
+                const t = d.lines.includes(`v-${r}-${c}`);
+                html += `<div onclick="clickLine('v-${r}-${c}')" class="absolute cursor-pointer group" 
+                    style="top:${r*gap+offset+10}px; left:${c*gap+offset-4}px; width:12px; height:${gap-20}px; z-index:10;">
+                    <div class="w-full h-full rounded-full transition-all duration-200 ${t ? 'bg-white shadow-[0_0_10px_white]' : 'bg-white/5 group-hover:bg-white/20'}"></div>
+                </div>`;
+            }
+
+            // Dots (Perfectly Centered)
+            for(let r=0; r<size; r++) for(let c=0; c<size; c++) {
+                html += `<div class="absolute bg-slate-400 w-3 h-3 rounded-full pointer-events-none shadow-[0_0_5px_black]" 
+                    style="top:${r*gap+offset-1}px; left:${c*gap+offset-1}px; z-index:20;"></div>`;
+            }
+
+            html += `</div></div>`;
+            document.getElementById('content').innerHTML = html;
+        }
+
+        window.clickLine = async (l) => {
+            const d = currentData.dots; if(d.turn!==myRole || d.lines.includes(l)) return;
+            d.lines.push(l); let cl = false;
+            for(let r=0; r<4; r++) for(let c=0; c<4; c++) {
+                if(!d.boxes.find(b=>b.id===`b-${r}-${c}`) && [`h-${r}-${c}`,`h-${r+1}-${c}`,`v-${r}-${c}`,`v-${r}-${c+1}`].every(x=>d.lines.includes(x))) { 
+                    d.boxes.push({id:`b-${r}-${c}`,owner:myRole}); 
+                    d.scores[myRole]++; cl=true; 
+                }
+            }
+            if(!cl) d.turn = (myRole==='z'?'f':'z');
+            if(isBotMode) renderDots(); else await updateDoc(doc(db,'artifacts',appId,'public', 'data', 'matches', gameId), {dots:d});
+        };
+
+        // --- Bot Logic ---
+        function startBotLogic() {
+            if (botInterval) clearInterval(botInterval);
+            botInterval = setInterval(() => {
+                if (!isBotMode || transitionLocked || !currentData) return;
+
+                if (currentData.gameType === 'typing' && Math.random() > 0.8) {
+                    const target = currentData.typing.currentWord;
+                    currentData.typing.messages.push({ role: 'f', text: target, time: Date.now() });
+                    currentData.typing.scores.f++;
+                    currentData.typing.currentWord = words[Math.floor(Math.random()*words.length)];
+                    renderTyping();
+                }
+
+                if (currentData.gameType === 'dots' && currentData.dots.turn === 'f') {
+                    const size = 5;
+                    const possible = [];
+                    for(let r=0; r<size; r++) for(let c=0; c<size-1; c++) if(!currentData.dots.lines.includes(`h-${r}-${c}`)) possible.push(`h-${r}-${c}`);
+                    for(let r=0; r<size-1; r++) for(let c=0; c<size; c++) if(!currentData.dots.lines.includes(`v-${r}-${c}`)) possible.push(`v-${r}-${c}`);
+                    if (possible.length > 0) {
+                        const l = possible[Math.floor(Math.random()*possible.length)];
+                        currentData.dots.lines.push(l);
+                        let cl = false;
+                        for(let r=0; r<4; r++) for(let c=0; c<4; c++) {
+                            if(!currentData.dots.boxes.find(b=>b.id===`b-${r}-${c}`) && [`h-${r}-${c}`,`h-${r+1}-${c}`,`v-${r}-${c}`,`v-${r}-${c+1}`].every(x=>currentData.dots.lines.includes(x))) { 
+                                d.boxes.push({id:`b-${r}-${c}`,owner:'f'}); 
+                                d.scores.f++; cl=true; 
+                            }
+                        }
+                        if(!cl) currentData.dots.turn = 'z';
+                        renderDots();
+                    }
+                }
+            }, 1500);
+        }
+
+        // --- Speed & XO Re-render ---
+        function renderSpeed() {
+            const s = currentData.speed;
+            if (s.winner && !transitionLocked) {
+                transitionLocked = true;
+                const winName = s.winner === 'z' ? 'زينبي' : 'فوفو';
+                document.getElementById('content').innerHTML = `<div class="text-center py-20"><h2 class="text-5xl font-black text-cyan-400 animate-pulse">فوز ${winName}! 🔥</h2></div>`;
+                setTimeout(() => selectGame('none'), 3000); return;
+            }
+            document.getElementById('content').innerHTML = `
+                <div class="relative w-full max-w-md h-32 bg-slate-900 rounded-[3rem] p-4 border-4 border-white/5 overflow-hidden mb-12 shadow-2xl">
+                    <div class="absolute h-full top-0 bg-gradient-to-l from-pink-500 via-purple-500 to-cyan-500 transition-all duration-150" style="width: ${s.score}%; left: 0;"></div>
+                    <div class="absolute inset-0 flex items-center justify-between px-10 font-black italic text-white mix-blend-difference"><span>ZINABI</span> <span>FOFO</span></div>
+                </div>
+                <button id="tap-btn" class="w-64 h-64 bg-red-600 rounded-full shadow-[0_20px_0px_#7f1d1d] active:shadow-none active:translate-y-[20px] flex items-center justify-center text-7xl select-none transition-all">🥊</button>
+            `;
+            const btn = document.getElementById('tap-btn');
+            const hit = async (e) => {
+                e.preventDefault();
+                let val = currentData.speed.score + (myRole === 'z' ? -4 : 4);
+                let win = null;
+                if (val <= 0) { val = 0; win = 'z'; }
+                if (val >= 100) { val = 100; win = 'f'; }
+                if (isBotMode) { currentData.speed.score = val; currentData.speed.winner = win; renderSpeed(); }
+                else await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), { "speed.score": val, "speed.winner": win });
+            };
+            btn.onmousedown = hit; btn.ontouchstart = hit;
         }
 
         function renderXO() {
             const xo = currentData.xo;
-            const winner = checkWinnerXO(xo.board);
-            if (winner && !transitionLocked) {
+            const win = checkWinnerXO(xo.board);
+            if (win && !transitionLocked) {
                 transitionLocked = true;
-                const msg = winner === 'draw' ? "تعادل!" : `فوز ${winner === 'z' ? 'زينبي' : 'فوفو'}!`;
-                document.getElementById('content').innerHTML = `<div class="text-center py-20 animate-bounce"><h2 class="text-4xl font-black text-cyan-400">${msg}</h2></div>`;
-                setTimeout(() => selectGame('none'), 2500);
-                return;
+                const msg = win === 'draw' ? "تعادل!" : `فوز ${win === 'z' ? 'زينبي' : 'فوفو'}!`;
+                document.getElementById('content').innerHTML = `<div class="text-center py-20"><h2 class="text-5xl font-black text-pink-500">${msg}</h2></div>`;
+                setTimeout(() => selectGame('none'), 2500); return;
             }
-            if (transitionLocked) return;
-            let html = `<div class="mb-6 text-center text-pink-500 font-bold">${xo.turn === myRole ? 'دورك الآن' : 'انتظر الخصم...'}</div>`;
-            html += `<div class="grid grid-cols-3 gap-3 w-72 mx-auto">`;
+            let html = `<div class="mb-10 text-center font-black text-2xl ${xo.turn === myRole ? 'text-green-400' : 'text-slate-600'}">${xo.turn === myRole ? 'دورك للعب' : 'انتظر الخصم'}</div>`;
+            html += `<div class="grid grid-cols-3 gap-6 w-80 mx-auto">`;
             xo.board.forEach((cell, i) => {
-                html += `<button onclick="playXO(${i})" class="h-20 bg-slate-800 rounded-2xl text-4xl font-black shadow-lg">${cell === 'z' ? '❌' : (cell === 'f' ? '⭕' : '')}</button>`;
+                html += `<button onclick="playXO(${i})" class="h-24 bg-slate-900 border border-white/10 rounded-3xl text-5xl font-black shadow-2xl active:scale-90 transition-all">${cell === 'z' ? '❌' : (cell === 'f' ? '⭕' : '')}</button>`;
             });
             html += `</div>`;
             document.getElementById('content').innerHTML = html;
-            if (isBotMode && xo.turn === 'f' && !winner) setTimeout(botXO, 600);
         }
+
         window.playXO = async (i) => {
             if (transitionLocked || currentData.xo.turn !== myRole || currentData.xo.board[i] !== "") return;
             const b = [...currentData.xo.board]; b[i] = myRole;
@@ -160,249 +354,76 @@
             if (isBotMode) { currentData.xo.board = b; currentData.xo.turn = t; renderXO(); }
             else await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), { "xo.board": b, "xo.turn": t });
         };
-        function botXO() {
-            const empty = currentData.xo.board.map((v, i) => v === "" ? i : null).filter(v => v !== null);
-            if (empty.length) playXO(empty[Math.floor(Math.random() * empty.length)]);
+
+        function checkWinnerXO(board) {
+            const wins = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+            for (let w of wins) if (board[w[0]] && board[w[0]] === board[w[1]] && board[w[0]] === board[w[2]]) return board[w[0]];
+            return board.includes("") ? null : "draw";
         }
 
-        // --- Speed Challenge (Winner Added) ---
-        function renderSpeed() {
-            const score = currentData.speed.score;
-            let win = null;
-            if (score <= 0) win = 'z';
-            if (score >= 100) win = 'f';
-
-            if (win && !transitionLocked) {
-                transitionLocked = true;
-                const msg = `الفائز هو ${win === 'z' ? 'زينبي' : 'فوفو'}!`;
-                document.getElementById('content').innerHTML = `<div class="text-center py-20 animate-pulse"><h2 class="text-4xl font-black text-yellow-400">${msg}</h2></div>`;
-                setTimeout(() => selectGame('none'), 3000);
-                return;
-            }
-
-            document.getElementById('content').innerHTML = `
-                <div class="text-center mb-10"><h3 class="text-2xl font-black italic">تحدي الضغط</h3></div>
-                <div class="relative w-full h-24 bg-slate-900 rounded-[2.5rem] p-3 border-4 border-white/5 overflow-hidden shadow-inner">
-                    <div class="absolute h-full top-0 bg-gradient-to-l from-pink-500 to-cyan-500 transition-all duration-150 ease-out" style="width: ${score}%; left: 0;"></div>
-                    <div class="absolute inset-0 flex items-center justify-between px-10 font-black text-sm italic tracking-widest mix-blend-difference text-white">
-                        <span>ZINABI</span> <span>FOFO</span>
-                    </div>
-                </div>
-                <div class="mt-20 flex justify-center">
-                    <button id="tap-btn" class="w-56 h-56 bg-pink-600 rounded-full shadow-[0_25px_80px_rgba(219,39,119,0.5)] border-b-[15px] border-pink-900 active:border-b-0 active:translate-y-3 transition-all flex flex-col items-center justify-center text-6xl select-none">
-                        <span>🔥</span>
-                        <span class="text-[10px] font-black uppercase mt-2">اضغط بسرعة</span>
-                    </button>
-                </div>
-            `;
-            const btn = document.getElementById('tap-btn');
-            const trigger = async (e) => {
-                e.preventDefault();
-                if (transitionLocked) return;
-                let s = currentData.speed.score;
-                const change = myRole === 'z' ? -3 : 3;
-                s = Math.max(0, Math.min(100, s + change));
-                if (isBotMode) { currentData.speed.score = s; renderSpeed(); }
-                else await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), { "speed.score": s });
-            };
-            btn.addEventListener('touchstart', trigger, { passive: false });
-            btn.addEventListener('mousedown', trigger);
-
-            if (isBotMode && !window.botS) {
-                window.botS = setInterval(() => {
-                    if (currentData?.gameType === 'speed' && !transitionLocked) {
-                        currentData.speed.score = Math.min(100, currentData.speed.score + 1.2);
-                        renderSpeed();
-                    }
-                }, 100);
-            }
-        }
-
-        // --- Dots and Boxes (Larger Grid + Names) ---
-        function renderDots() {
-            const d = currentData.dots;
-            const size = 5; // 5x5 points = 4x4 boxes (16 squares)
-            const gap = 60;
-            const offset = 40;
-
-            let html = `<div class="flex justify-between mb-8 px-4 font-black">
-                <div class="text-pink-500 text-lg">زينبي: ${d.scores.z}</div>
-                <div class="text-cyan-500 text-lg">فوفو: ${d.scores.f}</div>
-            </div>`;
-            
-            html += `<div class="relative mx-auto bg-slate-900/50 p-6 rounded-[2.5rem] border border-white/10 shadow-2xl overflow-auto" style="width: 310px; height: 310px;">`;
-            
-            // Render Boxes with Names
-            for(let r=0; r<size-1; r++) {
-                for(let c=0; c<size-1; c++) {
-                    const boxId = `b-${r}-${c}`;
-                    const owner = d.boxes.find(b => b.id === boxId)?.owner;
-                    const name = owner === 'z' ? 'زينبي' : 'فوفو';
-                    const color = owner === 'z' ? 'bg-pink-500/20 text-pink-400' : 'bg-cyan-500/20 text-cyan-400';
-                    
-                    html += `<div class="absolute flex items-center justify-center transition-all duration-500 overflow-hidden" style="top:${r*gap + offset + 10}px; left:${c*gap + offset + 10}px; width:${gap-20}px; height:${gap-20}px; border-radius:12px;">
-                        ${owner ? `<div class="${color} w-full h-full flex items-center justify-center text-[8px] font-black">${name}</div>` : ''}
-                    </div>`;
-                }
-            }
-
-            // Render Lines (Horizontal)
-            for(let r=0; r<size; r++) {
-                for(let c=0; c<size-1; c++) {
-                    const lid = `h-${r}-${c}`;
-                    const taken = d.lines.includes(lid);
-                    html += `<div onclick="clickLine('${lid}')" class="absolute cursor-pointer group" style="top:${r*gap + offset + 2}px; left:${c*gap + offset + 10}px; width:${gap-20}px; height:6px;">
-                        <div class="w-full h-full rounded-full transition-all ${taken ? 'bg-white shadow-[0_0_8px_white]' : 'bg-white/5 group-hover:bg-white/20'}"></div>
-                    </div>`;
-                }
-            }
-            // Render Lines (Vertical)
-            for(let r=0; r<size-1; r++) {
-                for(let c=0; c<size; c++) {
-                    const lid = `v-${r}-${c}`;
-                    const taken = d.lines.includes(lid);
-                    html += `<div onclick="clickLine('${lid}')" class="absolute cursor-pointer group" style="top:${r*gap + offset + 10}px; left:${c*gap + offset + 2}px; width:6px; height:${gap-20}px;">
-                        <div class="w-full h-full rounded-full transition-all ${taken ? 'bg-white shadow-[0_0_8px_white]' : 'bg-white/5 group-hover:bg-white/20'}"></div>
-                    </div>`;
-                }
-            }
-            // Render Dots
-            for(let r=0; r<size; r++) {
-                for(let c=0; c<size; c++) {
-                    html += `<div class="absolute bg-slate-400 w-2.5 h-2.5 rounded-full border border-white/20" style="top:${r*gap + offset}px; left:${c*gap + offset}px;"></div>`;
-                }
-            }
-            html += `</div>`;
-            html += `<div class="mt-6 text-center text-[10px] font-bold ${d.turn === myRole ? 'text-green-400' : 'text-slate-500'}">
-                ${d.turn === myRole ? 'دورك الآن: حدد خطاً' : 'انتظر الخصم...'}
-            </div>`;
-            
-            document.getElementById('content').innerHTML = html;
-
-            if (isBotMode && d.turn === 'f') setTimeout(botDots, 1000);
-
-            // Check End of Game
-            if (d.boxes.length === (size-1)*(size-1) && !transitionLocked) {
-                transitionLocked = true;
-                const winMsg = d.scores.z > d.scores.f ? "زينبي فازت!" : (d.scores.f > d.scores.z ? "فوفو فازت!" : "تعادل!");
-                document.getElementById('content').innerHTML += `<div class="fixed inset-0 bg-slate-950/90 flex flex-col items-center justify-center z-50 p-8 text-center"><h2 class="text-4xl font-black text-white mb-4">${winMsg}</h2><p class="text-slate-400">سيتم العودة للقائمة تلقائياً</p></div>`;
-                setTimeout(() => selectGame('none'), 3500);
-            }
-        }
-
-        window.clickLine = async (lid) => {
-            const d = currentData.dots;
-            if (d.turn !== myRole || d.lines.includes(lid) || transitionLocked) return;
-            
-            d.lines.push(lid);
-            let closedAny = false;
-            for(let r=0; r<4; r++) {
-                for(let c=0; c<4; c++) {
-                    const bid = `b-${r}-${c}`;
-                    if (!d.boxes.find(b => b.id === bid)) {
-                        const req = [`h-${r}-${c}`, `h-${r+1}-${c}`, `v-${r}-${c}`, `v-${r}-${c+1}`];
-                        if (req.every(l => d.lines.includes(l))) {
-                            d.boxes.push({ id: bid, owner: myRole });
-                            d.scores[myRole]++;
-                            closedAny = true;
-                        }
-                    }
-                }
-            }
-            if (!closedAny) d.turn = (myRole === 'z' ? 'f' : 'z');
-            
-            if (isBotMode) renderDots();
-            else await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), { dots: d });
-        };
-
-        function botDots() {
-            const d = currentData.dots;
-            const allPossible = [];
-            for(let r=0; r<5; r++) for(let c=0; c<4; c++) allPossible.push(`h-${r}-${c}`);
-            for(let r=0; r<4; r++) for(let c=0; c<5; c++) allPossible.push(`v-${r}-${c}`);
-            const avail = allPossible.filter(l => !d.lines.includes(l));
-            if (avail.length && d.turn === 'f') {
-                const move = avail[Math.floor(Math.random() * avail.length)];
-                const currentMe = myRole;
-                myRole = 'f';
-                window.clickLine(move);
-                myRole = currentMe;
-            }
-        }
-
-        window.exit = () => {
-            if (window.botS) clearInterval(window.botS); window.botS = null;
-            exitToMenu();
-        };
-
-        function exitToMenu() {
-            if (unsubscribe) unsubscribe();
-            gameId = null; isBotMode = false; showView('main-menu');
-        }
+        window.exit = () => { gameId=null; isBotMode=false; if(botInterval) clearInterval(botInterval); showView('main-menu'); };
     </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
         body { font-family: 'Cairo', sans-serif; background: #020617; color: white; overflow: hidden; touch-action: none; -webkit-tap-highlight-color: transparent; }
-        .glass { background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(15px); border: 1px solid rgba(255,255,255,0.08); }
-        .btn-game { @apply py-6 bg-slate-900 border border-white/5 rounded-[2.5rem] font-bold flex flex-col items-center gap-3 active:scale-95 transition-all; }
-        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .btn-game { @apply py-6 bg-slate-900 border border-white/5 rounded-[2.5rem] font-black flex flex-col items-center gap-3 active:scale-95 transition-all shadow-xl; }
+        ::-webkit-scrollbar { width: 0; }
     </style>
 </head>
-<body class="h-screen flex items-center justify-center">
+<body class="h-screen flex items-center justify-center overflow-hidden">
 
-    <div id="loading" class="fixed inset-0 z-[3000] bg-slate-950 flex flex-col items-center justify-center text-pink-500">
-        <div class="w-12 h-12 border-4 border-current border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p class="text-[10px] font-black tracking-widest uppercase">جاري التحميل...</p>
+    <div id="loading" class="fixed inset-0 z-[3000] bg-slate-950 flex items-center justify-center text-pink-500">
+        <div class="w-12 h-12 border-4 border-current border-t-transparent rounded-full animate-spin"></div>
     </div>
 
-    <div id="main-menu" class="w-full max-w-sm p-8 text-center">
-        <h1 class="text-7xl font-black mb-16 italic bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-400 bg-clip-text text-transparent tracking-tighter">Z&F</h1>
-        <button onclick="startBotMode()" class="w-full py-6 bg-white text-slate-950 rounded-[2.5rem] font-black text-2xl shadow-2xl mb-12 active:scale-95 transition-transform">🤖 العب ضد البوت</button>
+    <div id="main-menu" class="w-full max-w-sm p-8 text-center animate-in fade-in zoom-in duration-500">
+        <h1 class="text-7xl font-black mb-12 italic bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-400 bg-clip-text text-transparent tracking-tighter">ZENABI & FOFO</h1>
+        <button onclick="startBotMode()" class="w-full py-6 bg-white text-slate-950 rounded-[2.5rem] font-black text-2xl shadow-2xl mb-8 active:scale-95 transition-all">🤖 العب ضد البوت</button>
         <div class="space-y-4">
-            <button onclick="createRoom()" class="w-full py-5 bg-pink-600 rounded-[2rem] font-black text-lg shadow-xl shadow-pink-900/20 active:scale-95 transition-all">إنشاء غرفة أونلاين</button>
+            <button onclick="createRoom()" class="w-full py-5 bg-pink-600 rounded-[2rem] font-black text-lg active:scale-95 transition-all">إنشاء غرفة</button>
             <div class="flex gap-2">
-                <input id="room-input" type="number" placeholder="رقم الغرفة" class="flex-1 bg-slate-900 rounded-[1.5rem] px-6 py-4 text-center font-bold text-xl outline-none border border-white/5 focus:border-cyan-500 transition-all">
-                <button onclick="joinRoom()" class="px-8 py-4 bg-cyan-600 rounded-[1.5rem] font-black active:scale-95 transition-all">دخول</button>
+                <input id="room-input" type="number" placeholder="رقم الغرفة" class="flex-1 bg-slate-900 rounded-[1.5rem] px-6 py-4 text-center font-bold text-xl border border-white/5 outline-none">
+                <button onclick="joinRoom()" class="px-8 py-4 bg-cyan-600 rounded-[1.5rem] font-black active:scale-95">دخول</button>
             </div>
         </div>
     </div>
 
-    <div id="waiting-room" class="hidden text-center">
-        <div class="glass p-14 rounded-[60px] mb-10 relative">
-            <button onclick="exit()" class="absolute top-8 right-8 text-slate-500">✕</button>
-            <p class="text-slate-400 text-xs font-bold mb-4 uppercase tracking-[0.4em]">رمز الغرفة</p>
+    <div id="waiting-room" class="hidden text-center p-10 animate-pulse">
+        <div class="bg-slate-900/50 p-14 rounded-[60px] border border-white/5 mb-8">
+            <div class="text-xs text-slate-500 font-bold uppercase tracking-widest mb-4">كود الغرفة</div>
             <h2 id="room-id" class="text-8xl font-black italic tracking-tighter">0000</h2>
         </div>
-        <p class="animate-pulse text-pink-500 font-bold uppercase text-xs tracking-[0.2em]">في انتظار فوفو أو زينبي...</p>
+        <p class="font-black text-pink-500 uppercase">بانتظار دخول الخصم...</p>
     </div>
 
-    <div id="game-selector" class="hidden w-full max-w-sm p-8 text-center">
-        <h2 class="text-4xl font-black mb-12 italic">اختر التحدي</h2>
-        <div class="grid gap-4">
-            <button onclick="selectGame('dots')" class="btn-game hover:border-orange-500/50">
-                <span class="text-4xl">🏠</span>
-                <span>تجميع البيوت</span>
+    <div id="game-selector" class="hidden w-full max-w-sm p-8 text-center animate-in slide-in-from-bottom duration-500">
+        <h2 class="text-3xl font-black mb-8 italic">اختر التحدي</h2>
+        <div class="grid grid-cols-1 gap-4">
+            <button onclick="selectGame('typing')" class="btn-game border-blue-500/20">
+                <span class="text-4xl">💬</span>
+                <span>تحدي الكتابة (15 نقطة)</span>
             </button>
-            <button onclick="selectGame('speed')" class="btn-game hover:border-cyan-500/50">
-                <span class="text-4xl">🔥</span>
+            <button onclick="selectGame('dots')" class="btn-game border-orange-500/20">
+                <span class="text-4xl">📐</span>
+                <span>المربعات (دقة عالية)</span>
+            </button>
+            <button onclick="selectGame('speed')" class="btn-game border-red-500/20">
+                <span class="text-4xl">🥊</span>
                 <span>تحدي الضغط</span>
             </button>
-            <button onclick="selectGame('xo')" class="btn-game hover:border-pink-500/50">
-                <span class="text-4xl">❌⭕</span>
-                <span>إكس أوه</span>
+            <button onclick="selectGame('xo')" class="btn-game border-pink-500/20">
+                <span class="text-4xl">❌</span>
+                <span>لعبة إكس أوه</span>
             </button>
         </div>
     </div>
 
-    <div id="game-view" class="hidden fixed inset-0 flex flex-col items-center justify-center p-6 bg-[#020617]">
-        <div class="absolute top-10 w-full px-10 flex justify-between items-center">
-            <button onclick="selectGame('none')" class="bg-white/5 px-6 py-2 rounded-full text-[10px] font-black tracking-widest border border-white/10 uppercase italic">↩ اختيار لعبة</button>
-            <div class="flex gap-1">
-                <div class="w-1.5 h-1.5 rounded-full bg-pink-500"></div>
-                <div class="w-1.5 h-1.5 rounded-full bg-cyan-500"></div>
-            </div>
+    <div id="game-view" class="hidden fixed inset-0 flex flex-col items-center justify-center bg-[#020617] h-full overflow-hidden">
+        <div class="absolute top-6 w-full px-8 flex justify-between items-center z-50">
+            <button onclick="exit()" class="bg-white/5 px-6 py-2 rounded-full text-[10px] font-black border border-white/10 uppercase italic">↩ خروج</button>
+            <div class="text-[10px] text-slate-600 font-black tracking-widest uppercase">Z & F Arena</div>
         </div>
-        <div id="content" class="w-full flex flex-col items-center"></div>
+        <div id="content" class="w-full h-full flex flex-col items-center justify-center p-4"></div>
     </div>
 
 </body>
