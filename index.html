@@ -4,11 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ألعاب زينبي و فوفو</title>
+    <title>زينبي وفوفو - النسخة النهائية</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, doc, setDoc, onSnapshot, updateDoc, getDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         const firebaseConfig = {
@@ -24,37 +24,51 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
-        const appId = 'arenstore_multi_games_v1';
+        const appId = 'arenstore_pro_v3';
 
         let user = null;
         let gameId = null;
-        let myRole = null; 
+        let myRole = 'z'; 
         let isHost = false;
-        let currentRoomData = null;
+        let isBotMode = false;
         let unsubscribe = null;
+        let currentData = null;
+        let transitionLocked = false;
 
         onAuthStateChanged(auth, (u) => { 
-            if (u) { user = u; document.getElementById('loading-overlay').classList.add('hidden'); }
+            if (u) { user = u; document.getElementById('loading').classList.add('hidden'); }
             else { signInAnonymously(auth); }
         });
 
-        // نظام الغرف
+        window.startBotMode = () => {
+            isBotMode = true; isHost = true; myRole = 'z'; transitionLocked = false;
+            currentData = {
+                gameType: 'none', status: 'lobby',
+                xo: { board: Array(9).fill(""), turn: "z" },
+                speed: { score: 50, winner: null },
+                dots: { lines: [], boxes: [], turn: 'z', scores: { z: 0, f: 0 } }
+            };
+            showView('game-selector');
+        };
+
         window.createRoom = async () => {
-            const rid = Math.floor(1000 + Math.random() * 9000).toString();
+            isBotMode = false; transitionLocked = false;
+            const rid = Math.floor(1000 + Math.random() * 9999).toString();
             gameId = `room_${rid}`;
             myRole = 'z'; isHost = true;
             await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), {
                 roomId: rid, z_id: user.uid, status: 'waiting', gameType: 'none',
                 xo: { board: Array(9).fill(""), turn: "z" },
-                tug: { score: 0 },
-                house: { z_houses: 0, f_houses: 0, winner: null }
+                speed: { score: 50, winner: null },
+                dots: { lines: [], boxes: [], turn: 'z', scores: { z: 0, f: 0 } }
             });
-            document.getElementById('room-id-display').innerText = rid;
+            document.getElementById('room-id').innerText = rid;
             showView('waiting-room');
             listen();
         };
 
         window.joinRoom = async () => {
+            isBotMode = false;
             const rid = document.getElementById('room-input').value;
             if (!rid) return;
             gameId = `room_${rid}`;
@@ -70,149 +84,325 @@
         function listen() {
             if (unsubscribe) unsubscribe();
             unsubscribe = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), (s) => {
-                if (!s.exists()) { exitToMenu(); return; }
-                currentRoomData = s.data();
-                handleNavigation(currentRoomData);
+                if (!s.exists()) { exit(); return; }
+                currentData = s.data();
+                if (currentData.status === 'lobby') showView('game-selector');
+                else if (currentData.status === 'playing') renderGame();
             });
-        }
-
-        function handleNavigation(data) {
-            if (data.status === 'lobby') showView('game-selector');
-            else if (data.status === 'playing') {
-                if (data.gameType === 'xo') renderXO();
-                else if (data.gameType === 'tug') renderTug();
-                else if (data.gameType === 'house') renderHouse();
-                showView('game-screen');
-            }
         }
 
         function showView(id) {
-            ['main-menu', 'waiting-room', 'game-selector', 'game-screen'].forEach(v => document.getElementById(v).classList.add('hidden'));
-            document.getElementById(id).classList.remove('hidden');
+            ['main-menu', 'waiting-room', 'game-selector', 'game-view'].forEach(v => document.getElementById(v)?.classList.add('hidden'));
+            document.getElementById(id)?.classList.remove('hidden');
         }
 
-        // اختيار اللعبة (للمستضيف فقط)
         window.selectGame = async (type) => {
-            if (!isHost) return;
-            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), {
-                gameType: type, status: 'playing',
+            transitionLocked = false;
+            const initialData = {
+                gameType: type, 
+                status: (type === 'none' ? 'lobby' : 'playing'),
                 xo: { board: Array(9).fill(""), turn: "z" },
-                tug: { score: 0 },
-                house: { z_houses: 0, f_houses: 0, winner: null }
-            });
+                speed: { score: 50, winner: null },
+                dots: { lines: [], boxes: [], turn: 'z', scores: { z: 0, f: 0 } }
+            };
+            if (isBotMode) {
+                currentData = { ...currentData, ...initialData };
+                renderGame();
+                if (type === 'none') showView('game-selector');
+                return;
+            }
+            if (!isHost) return;
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), initialData);
         };
 
-        // --- منطق لعبة XO ---
+        function renderGame() {
+            showView('game-view');
+            const type = currentData.gameType;
+            if (type === 'xo') renderXO();
+            else if (type === 'speed') renderSpeed();
+            else if (type === 'dots') renderDots();
+            else if (type === 'none') showView('game-selector');
+        }
+
+        // --- XO Logic ---
+        function checkWinnerXO(board) {
+            const wins = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+            for (let w of wins) {
+                if (board[w[0]] && board[w[0]] === board[w[1]] && board[w[0]] === board[w[2]]) return board[w[0]];
+            }
+            return board.includes("") ? null : "draw";
+        }
+
         function renderXO() {
-            const container = document.getElementById('game-content');
-            const xoData = currentRoomData.xo;
-            let html = `<div class="text-center mb-4 font-bold">${xoData.turn === 'z' ? 'دور زينبي' : 'دور فوفو'}</div>`;
-            html += `<div class="grid grid-cols-3 gap-2 w-64 mx-auto">`;
-            xoData.board.forEach((cell, i) => {
-                html += `<button onclick="playXO(${i})" class="h-20 w-20 bg-slate-800 rounded-xl text-3xl font-black">${cell === 'z' ? 'X' : (cell === 'f' ? 'O' : '')}</button>`;
+            const xo = currentData.xo;
+            const winner = checkWinnerXO(xo.board);
+            if (winner && !transitionLocked) {
+                transitionLocked = true;
+                const msg = winner === 'draw' ? "تعادل!" : `فوز ${winner === 'z' ? 'زينبي' : 'فوفو'}!`;
+                document.getElementById('content').innerHTML = `<div class="text-center py-20 animate-bounce"><h2 class="text-4xl font-black text-cyan-400">${msg}</h2></div>`;
+                setTimeout(() => selectGame('none'), 2500);
+                return;
+            }
+            if (transitionLocked) return;
+            let html = `<div class="mb-6 text-center text-pink-500 font-bold">${xo.turn === myRole ? 'دورك الآن' : 'انتظر الخصم...'}</div>`;
+            html += `<div class="grid grid-cols-3 gap-3 w-72 mx-auto">`;
+            xo.board.forEach((cell, i) => {
+                html += `<button onclick="playXO(${i})" class="h-20 bg-slate-800 rounded-2xl text-4xl font-black shadow-lg">${cell === 'z' ? '❌' : (cell === 'f' ? '⭕' : '')}</button>`;
             });
             html += `</div>`;
-            container.innerHTML = html;
+            document.getElementById('content').innerHTML = html;
+            if (isBotMode && xo.turn === 'f' && !winner) setTimeout(botXO, 600);
         }
         window.playXO = async (i) => {
-            const xo = currentRoomData.xo;
-            if (xo.turn !== myRole || xo.board[i] !== "") return;
-            xo.board[i] = myRole;
-            xo.turn = myRole === 'z' ? 'f' : 'z';
-            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), { xo });
+            if (transitionLocked || currentData.xo.turn !== myRole || currentData.xo.board[i] !== "") return;
+            const b = [...currentData.xo.board]; b[i] = myRole;
+            const t = myRole === 'z' ? 'f' : 'z';
+            if (isBotMode) { currentData.xo.board = b; currentData.xo.turn = t; renderXO(); }
+            else await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), { "xo.board": b, "xo.turn": t });
         };
-
-        // --- منطق جر الحبل (السرعة) ---
-        function renderTug() {
-            const score = currentRoomData.tug.score;
-            document.getElementById('game-content').innerHTML = `
-                <div class="text-center mb-8">اسحب الخط لجهتك بالضغط السريع!</div>
-                <div class="relative w-full h-12 bg-slate-800 rounded-full overflow-hidden">
-                    <div id="tug-line" class="absolute h-full w-2 bg-pink-500 transition-all duration-100" style="left: calc(50% + ${score}px)"></div>
-                </div>
-                <button onclick="pressTug()" class="mt-10 w-32 h-32 bg-pink-600 rounded-full font-black text-xl shadow-xl active:scale-90 mx-auto block">اضغط!</button>
-            `;
+        function botXO() {
+            const empty = currentData.xo.board.map((v, i) => v === "" ? i : null).filter(v => v !== null);
+            if (empty.length) playXO(empty[Math.floor(Math.random() * empty.length)]);
         }
-        window.pressTug = async () => {
-            let score = currentRoomData.tug.score;
-            score += (myRole === 'z' ? -10 : 10);
-            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), { "tug.score": score });
-        };
 
-        // --- منطق تجميع البيوت ---
-        function renderHouse() {
-            const h = currentRoomData.house;
-            document.getElementById('game-content').innerHTML = `
-                <div class="flex justify-around mb-8">
-                    <div class="text-center">🏠 زينبي: ${h.z_houses}</div>
-                    <div class="text-center">🏠 فوفو: ${h.f_houses}</div>
+        // --- Speed Challenge (Winner Added) ---
+        function renderSpeed() {
+            const score = currentData.speed.score;
+            let win = null;
+            if (score <= 0) win = 'z';
+            if (score >= 100) win = 'f';
+
+            if (win && !transitionLocked) {
+                transitionLocked = true;
+                const msg = `الفائز هو ${win === 'z' ? 'زينبي' : 'فوفو'}!`;
+                document.getElementById('content').innerHTML = `<div class="text-center py-20 animate-pulse"><h2 class="text-4xl font-black text-yellow-400">${msg}</h2></div>`;
+                setTimeout(() => selectGame('none'), 3000);
+                return;
+            }
+
+            document.getElementById('content').innerHTML = `
+                <div class="text-center mb-10"><h3 class="text-2xl font-black italic">تحدي الضغط</h3></div>
+                <div class="relative w-full h-24 bg-slate-900 rounded-[2.5rem] p-3 border-4 border-white/5 overflow-hidden shadow-inner">
+                    <div class="absolute h-full top-0 bg-gradient-to-l from-pink-500 to-cyan-500 transition-all duration-150 ease-out" style="width: ${score}%; left: 0;"></div>
+                    <div class="absolute inset-0 flex items-center justify-between px-10 font-black text-sm italic tracking-widest mix-blend-difference text-white">
+                        <span>ZINABI</span> <span>FOFO</span>
+                    </div>
                 </div>
-                <div class="grid grid-cols-4 gap-4">
-                    ${Array(12).fill(0).map((_, i) => `<button onclick="collectHouse()" class="h-16 bg-slate-800 rounded-lg text-2xl">🏠</button>`).join('')}
+                <div class="mt-20 flex justify-center">
+                    <button id="tap-btn" class="w-56 h-56 bg-pink-600 rounded-full shadow-[0_25px_80px_rgba(219,39,119,0.5)] border-b-[15px] border-pink-900 active:border-b-0 active:translate-y-3 transition-all flex flex-col items-center justify-center text-6xl select-none">
+                        <span>🔥</span>
+                        <span class="text-[10px] font-black uppercase mt-2">اضغط بسرعة</span>
+                    </button>
                 </div>
             `;
+            const btn = document.getElementById('tap-btn');
+            const trigger = async (e) => {
+                e.preventDefault();
+                if (transitionLocked) return;
+                let s = currentData.speed.score;
+                const change = myRole === 'z' ? -3 : 3;
+                s = Math.max(0, Math.min(100, s + change));
+                if (isBotMode) { currentData.speed.score = s; renderSpeed(); }
+                else await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), { "speed.score": s });
+            };
+            btn.addEventListener('touchstart', trigger, { passive: false });
+            btn.addEventListener('mousedown', trigger);
+
+            if (isBotMode && !window.botS) {
+                window.botS = setInterval(() => {
+                    if (currentData?.gameType === 'speed' && !transitionLocked) {
+                        currentData.speed.score = Math.min(100, currentData.speed.score + 1.2);
+                        renderSpeed();
+                    }
+                }, 100);
+            }
         }
-        window.collectHouse = async () => {
-            const field = myRole === 'z' ? "house.z_houses" : "house.f_houses";
-            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), { [field]: currentRoomData.house[myRole === 'z' ? 'z_houses' : 'f_houses'] + 1 });
+
+        // --- Dots and Boxes (Larger Grid + Names) ---
+        function renderDots() {
+            const d = currentData.dots;
+            const size = 5; // 5x5 points = 4x4 boxes (16 squares)
+            const gap = 60;
+            const offset = 40;
+
+            let html = `<div class="flex justify-between mb-8 px-4 font-black">
+                <div class="text-pink-500 text-lg">زينبي: ${d.scores.z}</div>
+                <div class="text-cyan-500 text-lg">فوفو: ${d.scores.f}</div>
+            </div>`;
+            
+            html += `<div class="relative mx-auto bg-slate-900/50 p-6 rounded-[2.5rem] border border-white/10 shadow-2xl overflow-auto" style="width: 310px; height: 310px;">`;
+            
+            // Render Boxes with Names
+            for(let r=0; r<size-1; r++) {
+                for(let c=0; c<size-1; c++) {
+                    const boxId = `b-${r}-${c}`;
+                    const owner = d.boxes.find(b => b.id === boxId)?.owner;
+                    const name = owner === 'z' ? 'زينبي' : 'فوفو';
+                    const color = owner === 'z' ? 'bg-pink-500/20 text-pink-400' : 'bg-cyan-500/20 text-cyan-400';
+                    
+                    html += `<div class="absolute flex items-center justify-center transition-all duration-500 overflow-hidden" style="top:${r*gap + offset + 10}px; left:${c*gap + offset + 10}px; width:${gap-20}px; height:${gap-20}px; border-radius:12px;">
+                        ${owner ? `<div class="${color} w-full h-full flex items-center justify-center text-[8px] font-black">${name}</div>` : ''}
+                    </div>`;
+                }
+            }
+
+            // Render Lines (Horizontal)
+            for(let r=0; r<size; r++) {
+                for(let c=0; c<size-1; c++) {
+                    const lid = `h-${r}-${c}`;
+                    const taken = d.lines.includes(lid);
+                    html += `<div onclick="clickLine('${lid}')" class="absolute cursor-pointer group" style="top:${r*gap + offset + 2}px; left:${c*gap + offset + 10}px; width:${gap-20}px; height:6px;">
+                        <div class="w-full h-full rounded-full transition-all ${taken ? 'bg-white shadow-[0_0_8px_white]' : 'bg-white/5 group-hover:bg-white/20'}"></div>
+                    </div>`;
+                }
+            }
+            // Render Lines (Vertical)
+            for(let r=0; r<size-1; r++) {
+                for(let c=0; c<size; c++) {
+                    const lid = `v-${r}-${c}`;
+                    const taken = d.lines.includes(lid);
+                    html += `<div onclick="clickLine('${lid}')" class="absolute cursor-pointer group" style="top:${r*gap + offset + 10}px; left:${c*gap + offset + 2}px; width:6px; height:${gap-20}px;">
+                        <div class="w-full h-full rounded-full transition-all ${taken ? 'bg-white shadow-[0_0_8px_white]' : 'bg-white/5 group-hover:bg-white/20'}"></div>
+                    </div>`;
+                }
+            }
+            // Render Dots
+            for(let r=0; r<size; r++) {
+                for(let c=0; c<size; c++) {
+                    html += `<div class="absolute bg-slate-400 w-2.5 h-2.5 rounded-full border border-white/20" style="top:${r*gap + offset}px; left:${c*gap + offset}px;"></div>`;
+                }
+            }
+            html += `</div>`;
+            html += `<div class="mt-6 text-center text-[10px] font-bold ${d.turn === myRole ? 'text-green-400' : 'text-slate-500'}">
+                ${d.turn === myRole ? 'دورك الآن: حدد خطاً' : 'انتظر الخصم...'}
+            </div>`;
+            
+            document.getElementById('content').innerHTML = html;
+
+            if (isBotMode && d.turn === 'f') setTimeout(botDots, 1000);
+
+            // Check End of Game
+            if (d.boxes.length === (size-1)*(size-1) && !transitionLocked) {
+                transitionLocked = true;
+                const winMsg = d.scores.z > d.scores.f ? "زينبي فازت!" : (d.scores.f > d.scores.z ? "فوفو فازت!" : "تعادل!");
+                document.getElementById('content').innerHTML += `<div class="fixed inset-0 bg-slate-950/90 flex flex-col items-center justify-center z-50 p-8 text-center"><h2 class="text-4xl font-black text-white mb-4">${winMsg}</h2><p class="text-slate-400">سيتم العودة للقائمة تلقائياً</p></div>`;
+                setTimeout(() => selectGame('none'), 3500);
+            }
+        }
+
+        window.clickLine = async (lid) => {
+            const d = currentData.dots;
+            if (d.turn !== myRole || d.lines.includes(lid) || transitionLocked) return;
+            
+            d.lines.push(lid);
+            let closedAny = false;
+            for(let r=0; r<4; r++) {
+                for(let c=0; c<4; c++) {
+                    const bid = `b-${r}-${c}`;
+                    if (!d.boxes.find(b => b.id === bid)) {
+                        const req = [`h-${r}-${c}`, `h-${r+1}-${c}`, `v-${r}-${c}`, `v-${r}-${c+1}`];
+                        if (req.every(l => d.lines.includes(l))) {
+                            d.boxes.push({ id: bid, owner: myRole });
+                            d.scores[myRole]++;
+                            closedAny = true;
+                        }
+                    }
+                }
+            }
+            if (!closedAny) d.turn = (myRole === 'z' ? 'f' : 'z');
+            
+            if (isBotMode) renderDots();
+            else await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), { dots: d });
         };
 
-        window.exitToMenu = async () => {
-            if (isHost && gameId) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId));
+        function botDots() {
+            const d = currentData.dots;
+            const allPossible = [];
+            for(let r=0; r<5; r++) for(let c=0; c<4; c++) allPossible.push(`h-${r}-${c}`);
+            for(let r=0; r<4; r++) for(let c=0; c<5; c++) allPossible.push(`v-${r}-${c}`);
+            const avail = allPossible.filter(l => !d.lines.includes(l));
+            if (avail.length && d.turn === 'f') {
+                const move = avail[Math.floor(Math.random() * avail.length)];
+                const currentMe = myRole;
+                myRole = 'f';
+                window.clickLine(move);
+                myRole = currentMe;
+            }
+        }
+
+        window.exit = () => {
+            if (window.botS) clearInterval(window.botS); window.botS = null;
+            exitToMenu();
+        };
+
+        function exitToMenu() {
             if (unsubscribe) unsubscribe();
-            gameId = null; isHost = false; showView('main-menu');
-        };
+            gameId = null; isBotMode = false; showView('main-menu');
+        }
     </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
-        body { font-family: 'Cairo', sans-serif; background: #020617; color: white; overflow: hidden; touch-action: none; }
-        .glass { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); }
+        body { font-family: 'Cairo', sans-serif; background: #020617; color: white; overflow: hidden; touch-action: none; -webkit-tap-highlight-color: transparent; }
+        .glass { background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(15px); border: 1px solid rgba(255,255,255,0.08); }
+        .btn-game { @apply py-6 bg-slate-900 border border-white/5 rounded-[2.5rem] font-bold flex flex-col items-center gap-3 active:scale-95 transition-all; }
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     </style>
 </head>
 <body class="h-screen flex items-center justify-center">
 
-    <div id="loading-overlay" class="fixed inset-0 z-[2000] bg-slate-950 flex flex-col items-center justify-center">
-        <div class="w-10 h-10 border-4 border-pink-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p>جاري الاتصال...</p>
+    <div id="loading" class="fixed inset-0 z-[3000] bg-slate-950 flex flex-col items-center justify-center text-pink-500">
+        <div class="w-12 h-12 border-4 border-current border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p class="text-[10px] font-black tracking-widest uppercase">جاري التحميل...</p>
     </div>
 
-    <!-- القائمة الرئيسية -->
-    <div id="main-menu" class="w-full max-w-sm p-6 text-center">
-        <h1 class="text-5xl font-black mb-12 italic bg-gradient-to-r from-pink-500 to-cyan-500 bg-clip-text text-transparent">زينبي و فوفو</h1>
-        <button onclick="createRoom()" class="w-full py-5 bg-pink-600 rounded-3xl font-black text-xl mb-4 shadow-xl active:scale-95">إنشاء غرفة</button>
-        <div class="flex gap-2">
-            <input id="room-input" type="number" placeholder="رقم الغرفة" class="flex-1 bg-slate-900 border border-slate-800 rounded-3xl px-6 py-4 text-center font-bold outline-none">
-            <button onclick="joinRoom()" class="px-8 py-4 bg-cyan-600 rounded-3xl font-black active:scale-95">دخول</button>
-        </div>
-    </div>
-
-    <!-- شاشة الانتظار -->
-    <div id="waiting-room" class="hidden text-center p-6">
-        <div class="glass p-10 rounded-[40px] mb-8 relative">
-            <button onclick="exitToMenu()" class="absolute top-4 right-4 text-slate-500">✕</button>
-            <p class="text-slate-400 mb-2">رقم الغرفة</p>
-            <h2 id="room-id-display" class="text-7xl font-black tracking-widest">0000</h2>
-        </div>
-        <p class="animate-pulse text-pink-400">بانتظار الطرف الآخر...</p>
-    </div>
-
-    <!-- اختيار اللعبة -->
-    <div id="game-selector" class="hidden w-full max-w-sm p-6 text-center">
-        <h2 class="text-2xl font-black mb-8">اختر اللعبة</h2>
+    <div id="main-menu" class="w-full max-w-sm p-8 text-center">
+        <h1 class="text-7xl font-black mb-16 italic bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-400 bg-clip-text text-transparent tracking-tighter">Z&F</h1>
+        <button onclick="startBotMode()" class="w-full py-6 bg-white text-slate-950 rounded-[2.5rem] font-black text-2xl shadow-2xl mb-12 active:scale-95 transition-transform">🤖 العب ضد البوت</button>
         <div class="space-y-4">
-            <button onclick="selectGame('xo')" class="w-full py-4 bg-slate-800 rounded-2xl font-bold hover:bg-pink-600 transition-colors">لعبة X-O</button>
-            <button onclick="selectGame('tug')" class="w-full py-4 bg-slate-800 rounded-2xl font-bold hover:bg-cyan-600 transition-colors">تحدي السرعة (جر الحبل)</button>
-            <button onclick="selectGame('house')" class="w-full py-4 bg-slate-800 rounded-2xl font-bold hover:bg-orange-600 transition-colors">تجميع البيوت 🏠</button>
+            <button onclick="createRoom()" class="w-full py-5 bg-pink-600 rounded-[2rem] font-black text-lg shadow-xl shadow-pink-900/20 active:scale-95 transition-all">إنشاء غرفة أونلاين</button>
+            <div class="flex gap-2">
+                <input id="room-input" type="number" placeholder="رقم الغرفة" class="flex-1 bg-slate-900 rounded-[1.5rem] px-6 py-4 text-center font-bold text-xl outline-none border border-white/5 focus:border-cyan-500 transition-all">
+                <button onclick="joinRoom()" class="px-8 py-4 bg-cyan-600 rounded-[1.5rem] font-black active:scale-95 transition-all">دخول</button>
+            </div>
         </div>
-        <p id="guest-msg" class="mt-6 text-slate-500 text-sm hidden">بانتظار اختيار المستضيف للعبة...</p>
     </div>
 
-    <!-- شاشة اللعب -->
-    <div id="game-screen" class="hidden fixed inset-0 flex flex-col items-center justify-center p-6 bg-slate-950">
-        <button onclick="selectGame('none')" class="absolute top-4 left-4 bg-white/10 px-4 py-2 rounded-full text-xs">تغيير اللعبة ↩</button>
-        <div id="game-content" class="w-full max-w-sm">
-            <!-- محتوى اللعبة يظهر هنا -->
+    <div id="waiting-room" class="hidden text-center">
+        <div class="glass p-14 rounded-[60px] mb-10 relative">
+            <button onclick="exit()" class="absolute top-8 right-8 text-slate-500">✕</button>
+            <p class="text-slate-400 text-xs font-bold mb-4 uppercase tracking-[0.4em]">رمز الغرفة</p>
+            <h2 id="room-id" class="text-8xl font-black italic tracking-tighter">0000</h2>
         </div>
+        <p class="animate-pulse text-pink-500 font-bold uppercase text-xs tracking-[0.2em]">في انتظار فوفو أو زينبي...</p>
+    </div>
+
+    <div id="game-selector" class="hidden w-full max-w-sm p-8 text-center">
+        <h2 class="text-4xl font-black mb-12 italic">اختر التحدي</h2>
+        <div class="grid gap-4">
+            <button onclick="selectGame('dots')" class="btn-game hover:border-orange-500/50">
+                <span class="text-4xl">🏠</span>
+                <span>تجميع البيوت</span>
+            </button>
+            <button onclick="selectGame('speed')" class="btn-game hover:border-cyan-500/50">
+                <span class="text-4xl">🔥</span>
+                <span>تحدي الضغط</span>
+            </button>
+            <button onclick="selectGame('xo')" class="btn-game hover:border-pink-500/50">
+                <span class="text-4xl">❌⭕</span>
+                <span>إكس أوه</span>
+            </button>
+        </div>
+    </div>
+
+    <div id="game-view" class="hidden fixed inset-0 flex flex-col items-center justify-center p-6 bg-[#020617]">
+        <div class="absolute top-10 w-full px-10 flex justify-between items-center">
+            <button onclick="selectGame('none')" class="bg-white/5 px-6 py-2 rounded-full text-[10px] font-black tracking-widest border border-white/10 uppercase italic">↩ اختيار لعبة</button>
+            <div class="flex gap-1">
+                <div class="w-1.5 h-1.5 rounded-full bg-pink-500"></div>
+                <div class="w-1.5 h-1.5 rounded-full bg-cyan-500"></div>
+            </div>
+        </div>
+        <div id="content" class="w-full flex flex-col items-center"></div>
     </div>
 
 </body>
