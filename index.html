@@ -12,171 +12,142 @@
         body { font-family: 'Cairo', sans-serif; -webkit-tap-highlight-color: transparent; }
         .hidden { display: none !important; }
         
-        /* Weather Screen Styling */
-        .weather-gradient { 
+        /* واجهة الطقس السينمائية */
+        .weather-bg { 
             background: linear-gradient(180deg, #2c3e50 0%, #3498db 50%, #2980b9 100%); 
+            background-attachment: fixed;
         }
         .glass-card { 
-            background: rgba(255, 255, 255, 0.12); 
+            background: rgba(255, 255, 255, 0.15); 
             backdrop-filter: blur(25px); 
             border: 1px solid rgba(255, 255, 255, 0.2); 
             box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
         }
-        .search-inner-shadow {
-            box-shadow: inset 0 2px 10px rgba(0,0,0,0.1);
-        }
-
-        /* Private Screen Styling */
+        
+        /* شاشة عالمنا */
         .tab-active { 
             background: white !important; 
             color: #ec4899 !important; 
-            box-shadow: 0 4px 12px rgba(236, 72, 153, 0.15); 
+            box-shadow: 0 4px 15px rgba(236, 72, 153, 0.2); 
         }
-        
-        /* Animations */
-        @keyframes float {
-            0% { transform: translateY(0px); }
-            50% { transform: translateY(-10px); }
-            100% { transform: translateY(0px); }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
-        .animate-float { animation: float 6s ease-in-out infinite; }
-        
-        input::placeholder { color: rgba(255,255,255,0.5); }
+        .animate-fade { animation: fadeIn 0.5s ease-out forwards; }
     </style>
 </head>
-<body class="weather-gradient h-[100dvh] overflow-hidden m-0 p-0 text-white">
+<body class="weather-bg h-[100dvh] overflow-hidden m-0 p-0 text-white">
 
-    <!-- شاشة الطقس المتطورة (القفل السري) -->
-    <div id="lock-screen" class="flex flex-col items-center h-full w-full p-6 pt-16 transition-opacity duration-500">
-        <!-- Main Stats -->
-        <div class="text-center mb-8 animate-float">
-            <h2 class="text-3xl font-semibold mb-1">بغداد</h2>
-            <h1 class="text-[100px] font-thin leading-none mb-2">31°</h1>
-            <p class="text-lg opacity-80">صافٍ غالباً</p>
-            <p class="text-sm opacity-60">عظمى: 34° صغرى: 22°</p>
+    <!-- شاشة الطقس (الواجهة الزجاجية) -->
+    <div id="lock-screen" class="flex flex-col items-center h-full w-full p-6 pt-12 transition-all duration-700">
+        <div class="text-center mb-6">
+            <h2 class="text-3xl font-medium mb-1">بغداد</h2>
+            <h1 class="text-[90px] font-thin leading-none">31°</h1>
+            <p class="text-lg opacity-80 font-light italic">مشمس جزئياً</p>
         </div>
 
-        <!-- Search Input (The Secret Key) -->
+        <!-- حقل البحث السري -->
         <div class="w-full max-w-[340px] relative mb-10">
-            <div class="absolute left-4 top-1/2 -translate-y-1/2">
-                <i data-lucide="search" class="text-white/40 w-5 h-5"></i>
-            </div>
-            <input type="text" id="pass-input" placeholder="ابحث عن المدن أو الرموز البريدية" 
-                class="w-full py-4 pl-12 pr-6 rounded-2xl bg-black/10 border border-white/10 focus:outline-none focus:bg-black/20 text-right text-sm search-inner-shadow transition-all">
+            <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 w-5 h-5"></i>
+            <input type="text" id="pass-input" placeholder="ابحث عن مدينة أو رمز بريدي" 
+                class="w-full py-4 px-12 rounded-[2rem] bg-black/10 border border-white/10 focus:outline-none focus:bg-black/20 text-right text-sm shadow-inner transition-all">
         </div>
 
-        <!-- Weather Grid Details -->
+        <!-- تفاصيل الطقس الحقيقية -->
         <div class="grid grid-cols-2 gap-4 w-full max-w-[340px] mb-8">
-            <div class="glass-card rounded-3xl p-4 flex flex-col items-center">
-                <div class="flex items-center gap-2 opacity-60 text-[10px] mb-2 w-full justify-center">
+            <div class="glass-card rounded-[2rem] p-4 text-center">
+                <div class="flex items-center justify-center gap-2 opacity-60 text-[10px] mb-1">
                     <i data-lucide="wind" class="w-3 h-3"></i> <span>الرياح</span>
                 </div>
-                <span class="text-xl font-bold">12 كم/س</span>
+                <span class="text-lg font-bold">12 كم/س</span>
             </div>
-            <div class="glass-card rounded-3xl p-4 flex flex-col items-center">
-                <div class="flex items-center gap-2 opacity-60 text-[10px] mb-2 w-full justify-center">
+            <div class="glass-card rounded-[2rem] p-4 text-center">
+                <div class="flex items-center justify-center gap-2 opacity-60 text-[10px] mb-1">
                     <i data-lucide="droplets" class="w-3 h-3"></i> <span>الرطوبة</span>
                 </div>
-                <span class="text-xl font-bold">14%</span>
+                <span class="text-lg font-bold">10%</span>
             </div>
-            <div class="glass-card rounded-3xl p-4 flex flex-col items-center">
-                <div class="flex items-center gap-2 opacity-60 text-[10px] mb-2 w-full justify-center">
-                    <i data-lucide="sun" class="w-3 h-3"></i> <span>مؤشر UV</span>
+            <div class="glass-card rounded-[2rem] p-4 text-center">
+                <div class="flex items-center justify-center gap-2 opacity-60 text-[10px] mb-1">
+                    <i data-lucide="sun" class="w-3 h-3"></i> <span>UV</span>
                 </div>
-                <span class="text-xl font-bold">منخفض</span>
+                <span class="text-lg font-bold">منخفض</span>
             </div>
-            <div class="glass-card rounded-3xl p-4 flex flex-col items-center">
-                <div class="flex items-center gap-2 opacity-60 text-[10px] mb-2 w-full justify-center">
+            <div class="glass-card rounded-[2rem] p-4 text-center">
+                <div class="flex items-center justify-center gap-2 opacity-60 text-[10px] mb-1">
                     <i data-lucide="eye" class="w-3 h-3"></i> <span>الرؤية</span>
                 </div>
-                <span class="text-xl font-bold">15 كم</span>
+                <span class="text-lg font-bold">15 كم</span>
             </div>
         </div>
 
-        <!-- Hourly Forecast (Fake Data) -->
-        <div class="glass-card w-full max-w-[340px] rounded-3xl p-4">
-            <p class="text-[10px] opacity-60 border-b border-white/10 pb-2 mb-3">توقعات الـ 24 ساعة القادمة</p>
-            <div class="flex justify-between overflow-x-auto gap-4 custom-scrollbar">
-                <div class="flex flex-col items-center min-w-[40px]">
-                    <span class="text-[10px]">الآن</span>
-                    <i data-lucide="sun" class="w-4 h-4 my-2 text-yellow-300"></i>
-                    <span class="text-sm font-bold">31°</span>
-                </div>
-                <div class="flex flex-col items-center min-w-[40px]">
-                    <span class="text-[10px]">3م</span>
-                    <i data-lucide="sun" class="w-4 h-4 my-2 text-yellow-300"></i>
-                    <span class="text-sm font-bold">34°</span>
-                </div>
-                <div class="flex flex-col items-center min-w-[40px]">
-                    <span class="text-[10px]">6م</span>
-                    <i data-lucide="cloud-sun" class="w-4 h-4 my-2"></i>
-                    <span class="text-sm font-bold">29°</span>
-                </div>
-                <div class="flex flex-col items-center min-w-[40px]">
-                    <span class="text-[10px]">9م</span>
-                    <i data-lucide="moon" class="w-4 h-4 my-2 text-blue-200"></i>
-                    <span class="text-sm font-bold">25°</span>
-                </div>
-                <div class="flex flex-col items-center min-w-[40px]">
-                    <span class="text-[10px]">12ص</span>
-                    <i data-lucide="moon" class="w-4 h-4 my-2 text-blue-200"></i>
-                    <span class="text-sm font-bold">22°</span>
-                </div>
+        <!-- توقعات الساعات القادمة -->
+        <div class="glass-card w-full max-w-[340px] rounded-[2rem] p-5">
+            <p class="text-[10px] opacity-60 border-b border-white/10 pb-2 mb-3">توقعات الساعات القادمة</p>
+            <div class="flex justify-between gap-2 overflow-x-auto">
+                <div class="flex flex-col items-center min-w-[50px]"><span class="text-[10px]">الآن</span><i data-lucide="sun" class="w-4 h-4 my-2 text-yellow-300"></i><span class="font-bold">31°</span></div>
+                <div class="flex flex-col items-center min-w-[50px]"><span class="text-[10px]">4م</span><i data-lucide="sun" class="w-4 h-4 my-2 text-yellow-300"></i><span class="font-bold">33°</span></div>
+                <div class="flex flex-col items-center min-w-[50px]"><span class="text-[10px]">7م</span><i data-lucide="cloud-sun" class="w-4 h-4 my-2"></i><span class="font-bold">28°</span></div>
+                <div class="flex flex-col items-center min-w-[50px]"><span class="text-[10px]">10م</span><i data-lucide="moon" class="w-4 h-4 my-2 text-blue-200"></i><span class="font-bold">24°</span></div>
             </div>
         </div>
     </div>
 
-    <!-- شاشة "عالمنا" السرية -->
-    <div id="private-screen" class="hidden h-full bg-[#FFF9FB] flex flex-col text-gray-800">
+    <!-- شاشة "عالمنا" (عالم فؤاد) -->
+    <div id="private-screen" class="hidden h-full bg-[#FFF9FB] flex flex-col text-gray-900">
         <header class="bg-white px-4 py-4 flex justify-between items-center border-b border-pink-50 shadow-sm z-50">
             <div class="flex items-center gap-2">
-                <div class="w-9 h-9 bg-pink-500 rounded-full flex items-center justify-center shadow-lg shadow-pink-100">
+                <div class="w-9 h-9 bg-pink-500 rounded-full flex items-center justify-center shadow-lg">
                     <i data-lucide="heart" class="text-white fill-white w-5 h-5"></i>
                 </div>
-                <span class="font-black text-gray-900 text-xl tracking-tight">عالمنا</span>
+                <span class="font-black text-xl text-gray-800">عالمنا</span>
             </div>
             
-            <div class="flex bg-gray-100 p-1.5 rounded-2xl">
-                <button onclick="showTab('chat')" id="btn-chat" class="px-4 py-2 rounded-xl text-[11px] font-black transition-all tab-active">الدردشة</button>
-                <button onclick="showTab('posts')" id="btn-posts" class="px-4 py-2 rounded-xl text-[11px] font-black transition-all text-gray-400">الذكريات</button>
-                <button onclick="showTab('music')" id="btn-music" class="px-4 py-2 rounded-xl text-[11px] font-black transition-all text-gray-400">الأغاني</button>
+            <div class="flex bg-gray-100 p-1 rounded-[1.2rem]">
+                <button onclick="showTab('chat')" id="btn-chat" class="px-4 py-2 rounded-xl text-[10px] font-bold transition-all tab-active">الدردشة</button>
+                <button onclick="showTab('posts')" id="btn-posts" class="px-4 py-2 rounded-xl text-[10px] font-bold transition-all text-gray-400">ذكرياتنا</button>
+                <button onclick="showTab('music')" id="btn-music" class="px-4 py-2 rounded-xl text-[10px] font-bold transition-all text-gray-400">أغانينا</button>
             </div>
         </header>
 
-        <main class="flex-1 flex flex-col overflow-hidden w-full max-w-md mx-auto relative bg-white">
-            
-            <!-- قسم الدردشة -->
-            <div id="tab-chat" class="flex flex-col h-full bg-[#fafafa]">
-                <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-4 text-right">
-                    <div class="text-center mt-20 text-gray-300 text-xs italic">جاري تهيئة عالمكم الخاص...</div>
-                </div>
-                <form id="chat-form" class="p-4 bg-white border-t border-pink-50 flex gap-2 pb-10 shadow-2xl">
-                    <input type="text" id="msg-input" placeholder="اكتب لحبيبتك..." class="flex-1 bg-gray-50 border border-gray-100 rounded-2xl px-5 py-3.5 text-sm focus:ring-2 focus:ring-pink-200 outline-none transition-all">
-                    <button type="submit" class="bg-pink-500 text-white p-4 rounded-2xl shadow-xl hover:bg-pink-600 active:scale-95 transition-all">
+        <main class="flex-1 flex flex-col overflow-hidden w-full max-w-md mx-auto bg-white relative">
+            <!-- إشعار حالة الاتصال -->
+            <div id="conn-toast" class="absolute top-2 left-1/2 -translate-x-1/2 bg-green-500 text-white text-[10px] px-4 py-1.5 rounded-full shadow-lg opacity-0 transition-opacity z-[100]">
+                متصل بـ Firebase ✅
+            </div>
+
+            <!-- محتوى الدردشة -->
+            <div id="tab-chat" class="flex flex-col h-full bg-gray-50/50">
+                <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-4"></div>
+                <form id="chat-form" class="p-4 bg-white border-t border-pink-50 flex gap-2 pb-10">
+                    <input type="text" id="msg-input" placeholder="اكتب شيئاً جميلاً..." class="flex-1 bg-gray-50 border border-gray-100 rounded-2xl px-5 py-3.5 text-sm focus:ring-2 focus:ring-pink-200 outline-none">
+                    <button type="submit" class="bg-pink-500 text-white p-4 rounded-2xl shadow-xl active:scale-95 transition-all">
                         <i data-lucide="send" class="w-5 h-5"></i>
                     </button>
                 </form>
             </div>
 
-            <!-- قسم المنشورات -->
-            <div id="tab-posts" class="hidden h-full overflow-y-auto p-4 space-y-6 bg-pink-50/20 pb-20">
-                <div class="bg-white p-5 rounded-[2.5rem] shadow-sm border border-pink-50">
-                    <textarea id="post-content" placeholder="كيف تشعرين اليوم؟" class="w-full resize-none border-none focus:ring-0 text-gray-700 text-sm font-medium" rows="2"></textarea>
+            <!-- محتوى المنشورات -->
+            <div id="tab-posts" class="hidden h-full overflow-y-auto p-4 space-y-6 bg-pink-50/20 pb-24">
+                <div class="bg-white p-5 rounded-[2rem] shadow-sm border border-pink-100">
+                    <textarea id="post-content" placeholder="سجلي ذكرى جديدة هنا..." class="w-full resize-none border-none focus:ring-0 text-sm font-medium" rows="2"></textarea>
                     <div class="flex items-center gap-2 border-t pt-4 mt-2">
-                        <input type="text" id="post-image" placeholder="رابط صورة للذكرى" class="flex-1 text-[10px] outline-none bg-gray-50 rounded-xl px-3 py-2.5">
-                        <button onclick="createPost()" class="bg-pink-500 text-white px-6 py-2.5 rounded-xl text-[11px] font-black shadow-lg">نشر</button>
+                        <input type="text" id="post-image" placeholder="رابط صورة (اختياري)" class="flex-1 text-[10px] outline-none bg-gray-50 rounded-xl px-3 py-2.5">
+                        <button onclick="createPost()" class="bg-pink-500 text-white px-6 py-2.5 rounded-xl text-[10px] font-black">نشر</button>
                     </div>
                 </div>
                 <div id="posts-list" class="space-y-5"></div>
             </div>
 
-            <!-- قسم الموسيقى -->
-            <div id="tab-music" class="hidden h-full overflow-y-auto p-4 space-y-6 bg-slate-950 text-white pb-20">
-                <div class="bg-white/5 backdrop-blur-md p-6 rounded-[2.5rem] border border-white/10">
-                    <h3 class="flex items-center gap-2 font-black mb-4 text-pink-400 text-sm italic underline decoration-pink-500/30">أغانينا الخاصة</h3>
-                    <input type="text" id="song-title" placeholder="اسم الأغنية" class="w-full bg-white/5 rounded-xl px-4 py-3 mb-3 outline-none text-xs border border-white/10 focus:border-pink-500">
-                    <input type="text" id="song-url" placeholder="رابط يوتيوب" class="w-full bg-white/5 rounded-xl px-4 py-3 mb-4 outline-none text-xs border border-white/10 focus:border-pink-500">
-                    <button onclick="addSong()" class="w-full bg-pink-500 py-3.5 rounded-xl font-black text-xs shadow-xl shadow-pink-500/20 active:scale-95 transition-all">إضافة فيديو</button>
+            <!-- محتوى الموسيقى -->
+            <div id="tab-music" class="hidden h-full overflow-y-auto p-4 space-y-6 bg-slate-950 text-white pb-24">
+                <div class="bg-white/5 backdrop-blur-lg p-6 rounded-[2rem] border border-white/10">
+                    <h3 class="text-pink-400 font-bold mb-4 text-xs italic">إضافة أغنية من يوتيوب</h3>
+                    <input type="text" id="song-title" placeholder="اسم الأغنية" class="w-full bg-white/5 rounded-xl px-4 py-3 mb-3 outline-none text-xs border border-white/10">
+                    <input type="text" id="song-url" placeholder="رابط الفيديو" class="w-full bg-white/5 rounded-xl px-4 py-3 mb-4 outline-none text-xs border border-white/10">
+                    <button onclick="addSong()" class="w-full bg-pink-500 py-3.5 rounded-xl font-bold text-xs">حفظ في القائمة</button>
                 </div>
                 <div id="songs-list" class="space-y-6"></div>
             </div>
@@ -185,85 +156,95 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
-        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
 
         let db, auth, currentUser;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'weather-secret-final';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'weather-secret-premium';
 
         lucide.createIcons();
 
-        // Secret Auto-Check (No button needed)
+        // فحص كلمة السر تلقائياً عند الكتابة
         document.getElementById('pass-input').addEventListener('input', (e) => {
-            const val = e.target.value.trim();
-            if (val === 'فؤاد') {
+            if (e.target.value.trim() === 'فؤاد') {
                 document.getElementById('lock-screen').style.opacity = '0';
                 setTimeout(() => {
                     document.getElementById('lock-screen').classList.add('hidden');
                     document.getElementById('private-screen').classList.remove('hidden');
+                    document.body.className = "h-[100dvh] overflow-hidden m-0 p-0";
                     initFirebase();
                 }, 400);
             }
         });
 
         async function initFirebase() {
-            const config = JSON.parse(__firebase_config);
-            const app = initializeApp(config);
-            db = getFirestore(app);
-            auth = getAuth(app);
+            try {
+                const config = JSON.parse(__firebase_config);
+                const app = initializeApp(config);
+                db = getFirestore(app);
+                auth = getAuth(app);
 
-            const userCred = await signInAnonymously(auth);
-            currentUser = userCred.user;
-            
-            // Messages
+                const userCred = await signInAnonymously(auth);
+                currentUser = userCred.user;
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        const toast = document.getElementById('conn-toast');
+                        toast.style.opacity = '1';
+                        setTimeout(() => toast.style.opacity = '0', 3000);
+                        startSyncing();
+                    }
+                });
+            } catch (err) {
+                console.error("Firebase Error:", err);
+            }
+        }
+
+        function startSyncing() {
+            // مزامنة الدردشة
             onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), (snap) => {
                 const msgs = snap.docs.map(d => d.data()).sort((a,b) => a.timestamp - b.timestamp);
                 const container = document.getElementById('chat-messages');
                 container.innerHTML = msgs.map(m => `
-                    <div class="flex ${m.sender === currentUser.uid ? 'justify-end' : 'justify-start'}">
-                        <div class="max-w-[85%] px-4 py-3 rounded-2xl shadow-sm text-sm font-medium ${m.sender === currentUser.uid ? 'bg-pink-500 text-white rounded-tl-none shadow-pink-100' : 'bg-white text-gray-700 border border-pink-50 rounded-tr-none'}">
+                    <div class="flex ${m.sender === currentUser.uid ? 'justify-end' : 'justify-start'} animate-fade">
+                        <div class="max-w-[80%] px-4 py-3 rounded-2xl shadow-sm text-sm font-medium ${m.sender === currentUser.uid ? 'bg-pink-500 text-white rounded-tl-none' : 'bg-gray-100 text-gray-700 border border-gray-200 rounded-tr-none'}">
                             ${m.text}
-                            <div class="text-[8px] mt-1.5 opacity-50 block text-left">${new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+                            <div class="text-[8px] mt-1 opacity-50 block text-left">${new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
                         </div>
                     </div>
                 `).join('');
                 container.scrollTop = container.scrollHeight;
             });
 
-            // Posts
+            // مزامنة المنشورات
             onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'posts'), (snap) => {
                 const pts = snap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b) => b.timestamp - a.timestamp);
                 document.getElementById('posts-list').innerHTML = pts.map(p => `
-                    <div class="bg-white rounded-[2.5rem] overflow-hidden shadow-sm border border-pink-50 p-6 text-right">
-                        <div class="flex items-center gap-2 mb-3">
-                             <div class="w-2 h-2 bg-pink-400 rounded-full"></div>
-                             <span class="text-[9px] text-gray-400 font-bold">${new Date(p.timestamp).toLocaleDateString('ar-EG')}</span>
-                        </div>
-                        <p class="text-gray-800 leading-relaxed mb-4 text-[13px] font-semibold">${p.content}</p>
+                    <div class="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-pink-100 p-6 text-right animate-fade">
+                        <p class="text-gray-800 leading-relaxed mb-4 text-sm font-semibold">${p.content}</p>
                         ${p.imageUrl ? `<img src="${p.imageUrl}" class="w-full rounded-2xl object-cover shadow-sm max-h-80" onerror="this.style.display='none'">` : ''}
+                        <div class="mt-3 text-[9px] text-gray-400 font-bold uppercase tracking-tighter">${new Date(p.timestamp).toLocaleDateString('ar-EG')}</div>
                     </div>
                 `).join('');
             });
 
-            // Songs
+            // مزامنة الأغاني
             onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'songs'), (snap) => {
                 const sgs = snap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b) => b.timestamp - a.timestamp);
                 document.getElementById('songs-list').innerHTML = sgs.map(s => `
-                    <div class="bg-white/5 rounded-[2.5rem] overflow-hidden border border-white/10">
-                        <div class="p-4 flex justify-between items-center text-right bg-white/5">
+                    <div class="bg-white/5 rounded-[2rem] overflow-hidden border border-white/10 animate-fade">
+                        <div class="p-4 flex justify-between items-center text-right">
                             <button onclick="window.deleteItem('songs', '${s.id}')" class="text-white/20 hover:text-red-400"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-                            <span class="font-bold text-[11px] text-pink-200 uppercase">${s.title}</span>
+                            <span class="font-bold text-[10px] text-pink-300">${s.title}</span>
                         </div>
-                        <div class="aspect-video w-full bg-black">
-                            <iframe src="${s.url}" class="w-full h-full" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-                        </div>
+                        <iframe src="${s.url}" class="w-full aspect-video" frameborder="0" allowfullscreen></iframe>
                     </div>
                 `).join('');
                 lucide.createIcons();
             });
         }
 
-        // Chat Send
+        // إرسال رسالة
         document.getElementById('chat-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const input = document.getElementById('msg-input');
@@ -274,7 +255,7 @@
             input.value = '';
         });
 
-        // Tab Switching
+        // تبديل التبويبات
         window.showTab = (tab) => {
             ['chat', 'posts', 'music'].forEach(t => {
                 document.getElementById(`tab-${t}`).classList.add('hidden');
@@ -294,7 +275,6 @@
                 content, imageUrl: image, timestamp: Date.now()
             });
             document.getElementById('post-content').value = '';
-            document.getElementById('post-image').value = '';
         };
 
         window.addSong = async () => {
@@ -306,7 +286,6 @@
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'songs'), {
                 title: title || 'لحن خاص', url, timestamp: Date.now()
             });
-            document.getElementById('song-title').value = '';
             document.getElementById('song-url').value = '';
         };
 
