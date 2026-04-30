@@ -12,7 +12,6 @@
         body { font-family: 'Cairo', sans-serif; -webkit-tap-highlight-color: transparent; }
         .hidden { display: none !important; }
         
-        /* واجهة الطقس السينمائية */
         .weather-bg { 
             background: linear-gradient(180deg, #2c3e50 0%, #3498db 50%, #2980b9 100%); 
             background-attachment: fixed;
@@ -24,7 +23,6 @@
             box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
         }
         
-        /* شاشة عالمنا */
         .tab-active { 
             background: white !important; 
             color: #ec4899 !important; 
@@ -35,7 +33,10 @@
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        .animate-fade { animation: fadeIn 0.5s ease-out forwards; }
+        .animate-fade { animation: fadeIn 0.4s ease-out forwards; }
+        
+        /* تحسين ملمس الأزرار عند الضغط */
+        button:active { transform: scale(0.95); opacity: 0.8; }
     </style>
 </head>
 <body class="weather-bg h-[100dvh] overflow-hidden m-0 p-0 text-white">
@@ -48,14 +49,12 @@
             <p class="text-lg opacity-80 font-light italic">مشمس جزئياً</p>
         </div>
 
-        <!-- حقل البحث السري -->
         <div class="w-full max-w-[340px] relative mb-10">
             <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 w-5 h-5"></i>
             <input type="text" id="pass-input" placeholder="ابحث عن مدينة أو رمز بريدي" 
                 class="w-full py-4 px-12 rounded-[2rem] bg-black/10 border border-white/10 focus:outline-none focus:bg-black/20 text-right text-sm shadow-inner transition-all">
         </div>
 
-        <!-- تفاصيل الطقس الحقيقية -->
         <div class="grid grid-cols-2 gap-4 w-full max-w-[340px] mb-8">
             <div class="glass-card rounded-[2rem] p-4 text-center">
                 <div class="flex items-center justify-center gap-2 opacity-60 text-[10px] mb-1">
@@ -69,33 +68,19 @@
                 </div>
                 <span class="text-lg font-bold">10%</span>
             </div>
-            <div class="glass-card rounded-[2rem] p-4 text-center">
-                <div class="flex items-center justify-center gap-2 opacity-60 text-[10px] mb-1">
-                    <i data-lucide="sun" class="w-3 h-3"></i> <span>UV</span>
-                </div>
-                <span class="text-lg font-bold">منخفض</span>
-            </div>
-            <div class="glass-card rounded-[2rem] p-4 text-center">
-                <div class="flex items-center justify-center gap-2 opacity-60 text-[10px] mb-1">
-                    <i data-lucide="eye" class="w-3 h-3"></i> <span>الرؤية</span>
-                </div>
-                <span class="text-lg font-bold">15 كم</span>
-            </div>
         </div>
 
-        <!-- توقعات الساعات القادمة -->
         <div class="glass-card w-full max-w-[340px] rounded-[2rem] p-5">
             <p class="text-[10px] opacity-60 border-b border-white/10 pb-2 mb-3">توقعات الساعات القادمة</p>
             <div class="flex justify-between gap-2 overflow-x-auto">
                 <div class="flex flex-col items-center min-w-[50px]"><span class="text-[10px]">الآن</span><i data-lucide="sun" class="w-4 h-4 my-2 text-yellow-300"></i><span class="font-bold">31°</span></div>
                 <div class="flex flex-col items-center min-w-[50px]"><span class="text-[10px]">4م</span><i data-lucide="sun" class="w-4 h-4 my-2 text-yellow-300"></i><span class="font-bold">33°</span></div>
-                <div class="flex flex-col items-center min-w-[50px]"><span class="text-[10px]">7م</span><i data-lucide="cloud-sun" class="w-4 h-4 my-2"></i><span class="font-bold">28°</span></div>
                 <div class="flex flex-col items-center min-w-[50px]"><span class="text-[10px]">10م</span><i data-lucide="moon" class="w-4 h-4 my-2 text-blue-200"></i><span class="font-bold">24°</span></div>
             </div>
         </div>
     </div>
 
-    <!-- شاشة "عالمنا" (عالم فؤاد) -->
+    <!-- شاشة "عالمنا" السرية -->
     <div id="private-screen" class="hidden h-full bg-[#FFF9FB] flex flex-col text-gray-900">
         <header class="bg-white px-4 py-4 flex justify-between items-center border-b border-pink-50 shadow-sm z-50">
             <div class="flex items-center gap-2">
@@ -107,35 +92,35 @@
             
             <div class="flex bg-gray-100 p-1 rounded-[1.2rem]">
                 <button onclick="showTab('chat')" id="btn-chat" class="px-4 py-2 rounded-xl text-[10px] font-bold transition-all tab-active">الدردشة</button>
-                <button onclick="showTab('posts')" id="btn-posts" class="px-4 py-2 rounded-xl text-[10px] font-bold transition-all text-gray-400">ذكرياتنا</button>
-                <button onclick="showTab('music')" id="btn-music" class="px-4 py-2 rounded-xl text-[10px] font-bold transition-all text-gray-400">أغانينا</button>
+                <button onclick="showTab('posts')" id="btn-posts" class="px-4 py-2 rounded-xl text-[10px] font-bold transition-all text-gray-400">الذكريات</button>
+                <button onclick="showTab('music')" id="btn-music" class="px-4 py-2 rounded-xl text-[10px] font-bold transition-all text-gray-400">الأغاني</button>
             </div>
         </header>
 
         <main class="flex-1 flex flex-col overflow-hidden w-full max-w-md mx-auto bg-white relative">
             <!-- إشعار حالة الاتصال -->
-            <div id="conn-toast" class="absolute top-2 left-1/2 -translate-x-1/2 bg-green-500 text-white text-[10px] px-4 py-1.5 rounded-full shadow-lg opacity-0 transition-opacity z-[100]">
-                متصل بـ Firebase ✅
+            <div id="conn-toast" class="absolute top-2 left-1/2 -translate-x-1/2 bg-green-500 text-white text-[10px] px-4 py-1.5 rounded-full shadow-lg opacity-0 transition-opacity z-[100] pointer-events-none">
+                متصل بنجاح ✅
             </div>
 
             <!-- محتوى الدردشة -->
             <div id="tab-chat" class="flex flex-col h-full bg-gray-50/50">
                 <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-4"></div>
-                <form id="chat-form" class="p-4 bg-white border-t border-pink-50 flex gap-2 pb-10">
-                    <input type="text" id="msg-input" placeholder="اكتب شيئاً جميلاً..." class="flex-1 bg-gray-50 border border-gray-100 rounded-2xl px-5 py-3.5 text-sm focus:ring-2 focus:ring-pink-200 outline-none">
-                    <button type="submit" class="bg-pink-500 text-white p-4 rounded-2xl shadow-xl active:scale-95 transition-all">
+                <div class="p-4 bg-white border-t border-pink-50 flex gap-2 pb-10">
+                    <input type="text" id="msg-input" placeholder="اكتب شيئاً..." class="flex-1 bg-gray-50 border border-gray-100 rounded-2xl px-5 py-3.5 text-sm focus:ring-2 focus:ring-pink-200 outline-none text-gray-800">
+                    <button type="button" id="send-btn" class="bg-pink-500 text-white p-4 rounded-2xl shadow-xl transition-all">
                         <i data-lucide="send" class="w-5 h-5"></i>
                     </button>
-                </form>
+                </div>
             </div>
 
             <!-- محتوى المنشورات -->
             <div id="tab-posts" class="hidden h-full overflow-y-auto p-4 space-y-6 bg-pink-50/20 pb-24">
                 <div class="bg-white p-5 rounded-[2rem] shadow-sm border border-pink-100">
-                    <textarea id="post-content" placeholder="سجلي ذكرى جديدة هنا..." class="w-full resize-none border-none focus:ring-0 text-sm font-medium" rows="2"></textarea>
+                    <textarea id="post-content" placeholder="اكتب ذكرى جديدة هنا..." class="w-full resize-none border-none focus:ring-0 text-sm font-medium text-gray-800" rows="2"></textarea>
                     <div class="flex items-center gap-2 border-t pt-4 mt-2">
                         <input type="text" id="post-image" placeholder="رابط صورة (اختياري)" class="flex-1 text-[10px] outline-none bg-gray-50 rounded-xl px-3 py-2.5">
-                        <button onclick="createPost()" class="bg-pink-500 text-white px-6 py-2.5 rounded-xl text-[10px] font-black">نشر</button>
+                        <button type="button" id="post-btn" class="bg-pink-500 text-white px-6 py-2.5 rounded-xl text-[10px] font-black">نشر</button>
                     </div>
                 </div>
                 <div id="posts-list" class="space-y-5"></div>
@@ -144,10 +129,9 @@
             <!-- محتوى الموسيقى -->
             <div id="tab-music" class="hidden h-full overflow-y-auto p-4 space-y-6 bg-slate-950 text-white pb-24">
                 <div class="bg-white/5 backdrop-blur-lg p-6 rounded-[2rem] border border-white/10">
-                    <h3 class="text-pink-400 font-bold mb-4 text-xs italic">إضافة أغنية من يوتيوب</h3>
                     <input type="text" id="song-title" placeholder="اسم الأغنية" class="w-full bg-white/5 rounded-xl px-4 py-3 mb-3 outline-none text-xs border border-white/10">
-                    <input type="text" id="song-url" placeholder="رابط الفيديو" class="w-full bg-white/5 rounded-xl px-4 py-3 mb-4 outline-none text-xs border border-white/10">
-                    <button onclick="addSong()" class="w-full bg-pink-500 py-3.5 rounded-xl font-bold text-xs">حفظ في القائمة</button>
+                    <input type="text" id="song-url" placeholder="رابط فيديو يوتيوب" class="w-full bg-white/5 rounded-xl px-4 py-3 mb-4 outline-none text-xs border border-white/10">
+                    <button type="button" id="song-btn" class="w-full bg-pink-500 py-3.5 rounded-xl font-bold text-xs">إضافة للقائمة</button>
                 </div>
                 <div id="songs-list" class="space-y-6"></div>
             </div>
@@ -156,15 +140,15 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
 
-        let db, auth, currentUser;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'weather-secret-premium';
+        let db, auth, currentUser = null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'weather-secret-v4-fix';
 
         lucide.createIcons();
 
-        // فحص كلمة السر تلقائياً عند الكتابة
+        // فحص كلمة السر تلقائياً
         document.getElementById('pass-input').addEventListener('input', (e) => {
             if (e.target.value.trim() === 'فؤاد') {
                 document.getElementById('lock-screen').style.opacity = '0';
@@ -184,11 +168,11 @@
                 db = getFirestore(app);
                 auth = getAuth(app);
 
-                const userCred = await signInAnonymously(auth);
-                currentUser = userCred.user;
-
+                await signInAnonymously(auth);
+                
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
+                        currentUser = user;
                         const toast = document.getElementById('conn-toast');
                         toast.style.opacity = '1';
                         setTimeout(() => toast.style.opacity = '0', 3000);
@@ -201,13 +185,13 @@
         }
 
         function startSyncing() {
-            // مزامنة الدردشة
+            // مزامنة الدردشة (ترتيب حسب الوقت)
             onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), (snap) => {
                 const msgs = snap.docs.map(d => d.data()).sort((a,b) => a.timestamp - b.timestamp);
                 const container = document.getElementById('chat-messages');
                 container.innerHTML = msgs.map(m => `
                     <div class="flex ${m.sender === currentUser.uid ? 'justify-end' : 'justify-start'} animate-fade">
-                        <div class="max-w-[80%] px-4 py-3 rounded-2xl shadow-sm text-sm font-medium ${m.sender === currentUser.uid ? 'bg-pink-500 text-white rounded-tl-none' : 'bg-gray-100 text-gray-700 border border-gray-200 rounded-tr-none'}">
+                        <div class="max-w-[85%] px-4 py-3 rounded-2xl shadow-sm text-sm font-medium ${m.sender === currentUser.uid ? 'bg-pink-500 text-white rounded-tl-none' : 'bg-gray-100 text-gray-700 border border-gray-200 rounded-tr-none'}">
                             ${m.text}
                             <div class="text-[8px] mt-1 opacity-50 block text-left">${new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
                         </div>
@@ -244,16 +228,71 @@
             });
         }
 
+        // --- أزرار الإرسال المباشرة ---
+
         // إرسال رسالة
-        document.getElementById('chat-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
+        const sendMessage = async () => {
             const input = document.getElementById('msg-input');
-            if(!input.value.trim() || !currentUser) return;
-            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), {
-                text: input.value, sender: currentUser.uid, timestamp: Date.now()
-            });
-            input.value = '';
+            const text = input.value.trim();
+            if(!text || !currentUser) return;
+            
+            try {
+                input.value = ''; // تفريغ فوري لتجربة مستخدم سريعة
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), {
+                    text: text,
+                    sender: currentUser.uid,
+                    timestamp: Date.now()
+                });
+            } catch (e) { console.error("Send Error:", e); }
+        };
+
+        document.getElementById('send-btn').addEventListener('click', sendMessage);
+        document.getElementById('msg-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
         });
+
+        // نشر ذكرى
+        const createPost = async () => {
+            const contentInput = document.getElementById('post-content');
+            const imageInput = document.getElementById('post-image');
+            const content = contentInput.value.trim();
+            const image = imageInput.value.trim();
+            
+            if(!content || !currentUser) return;
+
+            try {
+                contentInput.value = '';
+                imageInput.value = '';
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'posts'), {
+                    content, imageUrl: image, timestamp: Date.now()
+                });
+            } catch (e) { console.error("Post Error:", e); }
+        };
+
+        document.getElementById('post-btn').addEventListener('click', createPost);
+
+        // إضافة أغنية
+        const addSong = async () => {
+            const titleInput = document.getElementById('song-title');
+            const urlInput = document.getElementById('song-url');
+            let url = urlInput.value.trim();
+            const title = titleInput.value.trim();
+
+            if(!url || !currentUser) return;
+
+            try {
+                if(url.includes('watch?v=')) url = url.replace('watch?v=', 'embed/').split('&')[0];
+                else if(url.includes('youtu.be/')) url = 'https://www.youtube.com/embed/' + url.split('/').pop();
+                
+                titleInput.value = '';
+                urlInput.value = '';
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'songs'), {
+                    title: title || 'لحن جميل', url, timestamp: Date.now()
+                });
+            } catch (e) { console.error("Song Error:", e); }
+        };
+
+        document.getElementById('song-btn').addEventListener('click', addSong);
 
         // تبديل التبويبات
         window.showTab = (tab) => {
@@ -267,30 +306,10 @@
             lucide.createIcons();
         };
 
-        window.createPost = async () => {
-            const content = document.getElementById('post-content').value;
-            const image = document.getElementById('post-image').value;
-            if(!content.trim()) return;
-            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'posts'), {
-                content, imageUrl: image, timestamp: Date.now()
-            });
-            document.getElementById('post-content').value = '';
-        };
-
-        window.addSong = async () => {
-            const title = document.getElementById('song-title').value;
-            let url = document.getElementById('song-url').value;
-            if(!url.trim()) return;
-            if(url.includes('watch?v=')) url = url.replace('watch?v=', 'embed/').split('&')[0];
-            else if(url.includes('youtu.be/')) url = 'https://www.youtube.com/embed/' + url.split('/').pop();
-            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'songs'), {
-                title: title || 'لحن خاص', url, timestamp: Date.now()
-            });
-            document.getElementById('song-url').value = '';
-        };
-
         window.deleteItem = async (col, id) => {
-            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', col, id));
+            if(confirm("هل تريد مسح هذا العنصر؟")) {
+                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', col, id));
+            }
         };
     </script>
 </body>
