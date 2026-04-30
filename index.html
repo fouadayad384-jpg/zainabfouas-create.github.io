@@ -4,428 +4,251 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>زينبي وفوفو - النسخة النهائية</title>
+    <title>الطقس</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, doc, setDoc, onSnapshot, updateDoc, getDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyCrLUiTNZL3vJ10RzqQVBC2UUMlhQRmB18",
-            authDomain: "arenstore-71e49.firebaseapp.com",
-            projectId: "arenstore-71e49",
-            storageBucket: "arenstore-71e49.firebasestorage.app",
-            messagingSenderId: "221262833085",
-            appId: "1:221262833085:web:68e17371c7100e1053ded4",
-            measurementId: "G-1Q957K0Y1V"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
-        const appId = 'zf_ultimate_v9';
-
-        let user = null;
-        let gameId = null;
-        let myRole = 'z'; 
-        let isHost = false;
-        let isBotMode = false;
-        let unsubscribe = null;
-        let currentData = null;
-        let transitionLocked = false;
-        let botInterval = null;
-
-        const words = ["أحبك جداً", "بطل القصة", "سريع البرق", "ذكاء خارق", "تحدي كبير", "بغداد السلام", "نصر قريب", "قوة الإرادة", "مستقبل باهر", "صداقة أبدية", "فوز مستحق", "لعبة ممتعة", "تركيز عال", "كتابة سريعة", "إبداع بلا حدود"];
-
-        onAuthStateChanged(auth, (u) => { 
-            if (u) { user = u; document.getElementById('loading').classList.add('hidden'); }
-            else { signInAnonymously(auth); }
-        });
-
-        window.startBotMode = () => {
-            isBotMode = true; isHost = true; myRole = 'z'; transitionLocked = false;
-            currentData = {
-                gameType: 'none', status: 'playing',
-                xo: { board: Array(9).fill(""), turn: "z" },
-                speed: { score: 50, winner: null },
-                dots: { lines: [], boxes: [], turn: 'z', scores: { z: 0, f: 0 } },
-                typing: { currentWord: words[0], scores: { z: 0, f: 0 }, messages: [] },
-                chat: []
-            };
-            showView('game-selector');
-            startBotLogic();
-        };
-
-        window.createRoom = async () => {
-            isBotMode = false; transitionLocked = false;
-            const rid = Math.floor(1000 + Math.random() * 9999).toString();
-            gameId = `room_${rid}`; myRole = 'z'; isHost = true;
-            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), {
-                roomId: rid, z_id: user.uid, status: 'waiting', gameType: 'none',
-                xo: { board: Array(9).fill(""), turn: "z" },
-                speed: { score: 50, winner: null },
-                dots: { lines: [], boxes: [], turn: 'z', scores: { z: 0, f: 0 } },
-                typing: { currentWord: words[Math.floor(Math.random()*words.length)], scores: { z: 0, f: 0 }, messages: [] },
-                chat: []
-            });
-            document.getElementById('room-id').innerText = rid;
-            showView('waiting-room'); listen();
-        };
-
-        window.joinRoom = async () => {
-            const rid = document.getElementById('room-input').value; if (!rid) return;
-            gameId = `room_${rid}`;
-            const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId));
-            if (snap.exists()) { myRole = 'f'; isHost = false; await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), { f_id: user.uid, status: 'lobby' }); listen(); }
-            else alert("الغرفة غير موجودة");
-        };
-
-        function listen() {
-            if (unsubscribe) unsubscribe();
-            unsubscribe = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), (s) => {
-                if (!s.exists()) { exit(); return; }
-                const newData = s.data();
-                currentData = newData;
-                if (currentData.status === 'lobby') showView('game-selector');
-                else if (currentData.status === 'playing') renderGame();
-            });
-        }
-
-        function showView(id) {
-            ['main-menu', 'waiting-room', 'game-selector', 'game-view'].forEach(v => document.getElementById(v)?.classList.add('hidden'));
-            document.getElementById(id)?.classList.remove('hidden');
-        }
-
-        window.selectGame = async (type) => {
-            transitionLocked = false;
-            const init = {
-                gameType: type, status: 'playing',
-                xo: { board: Array(9).fill(""), turn: "z" },
-                speed: { score: 50, winner: null },
-                dots: { lines: [], boxes: [], turn: 'z', scores: { z: 0, f: 0 } },
-                typing: { currentWord: words[Math.floor(Math.random()*words.length)], scores: { z: 0, f: 0 }, messages: [] }
-            };
-            if (isBotMode) { currentData = {...currentData, ...init}; renderGame(); return; }
-            if (isHost) await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), init);
-        };
-
-        function renderGame() {
-            showView('game-view');
-            const t = currentData.gameType;
-            if (t === 'typing') renderTyping();
-            else if (t === 'speed') renderSpeed();
-            else if (t === 'dots') renderDots();
-            else if (t === 'xo') renderXO();
-            else if (t === 'none') showView('game-selector');
-        }
-
-        // --- Typing Challenge (Telegram Layout) ---
-        function renderTyping() {
-            const t = currentData.typing;
-            if (t.scores.z >= 15 || t.scores.f >= 15) {
-                const winner = t.scores.z >= 15 ? 'زينبي' : 'فوفو';
-                document.getElementById('content').innerHTML = `<div class="text-center py-20"><h2 class="text-5xl font-black text-yellow-400 animate-bounce">فوز ${winner} باللقب! 👑</h2></div>`;
-                setTimeout(() => selectGame('none'), 3000);
-                return;
-            }
-
-            document.getElementById('content').innerHTML = `
-                <div class="flex flex-col h-full w-full max-w-lg bg-[#0e1621] rounded-3xl border border-white/10 shadow-2xl overflow-hidden">
-                    <div class="bg-[#17212b] p-4 flex justify-between items-center border-b border-black">
-                        <div class="flex gap-4">
-                            <span class="text-pink-500 font-black">Z: ${t.scores.z}</span>
-                            <span class="text-cyan-500 font-black">F: ${t.scores.f}</span>
-                        </div>
-                        <div class="text-xs text-blue-400 font-bold tracking-widest uppercase">الهدف: 15 نقطة</div>
-                    </div>
-                    
-                    <!-- Fixed Target Word -->
-                    <div class="bg-[#1c2938] py-4 text-center border-b border-blue-500/20">
-                        <p class="text-[10px] text-slate-500 mb-1 uppercase font-bold">الكلمة المطلوبة</p>
-                        <div class="text-3xl font-black text-white px-6 inline-block rounded-xl">${t.currentWord}</div>
-                    </div>
-
-                    <div id="typing-chat-body" class="flex-1 overflow-y-auto p-4 space-y-3 flex flex-col">
-                        ${t.messages.map(m => `
-                            <div class="flex ${m.role === myRole ? 'justify-start' : 'justify-end'}">
-                                <div class="${m.role === 'z' ? 'bg-pink-700' : 'bg-cyan-700'} text-white px-4 py-2 rounded-2xl shadow-lg text-sm max-w-[85%]">
-                                    ${m.text}
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-
-                    <div class="bg-[#17212b] p-4 flex gap-2">
-                        <input id="chat-type-input" type="text" autocomplete="off" placeholder="اكتب الكلمة هنا..." 
-                            class="flex-1 bg-[#242f3d] text-white rounded-full px-6 py-3 outline-none focus:ring-2 ring-blue-500/50">
-                        <button onclick="sendTypingMsg()" class="bg-blue-600 text-white p-3 rounded-full shadow-lg active:scale-90 transition-all">
-                            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
-                        </button>
-                    </div>
-                </div>
-            `;
-            const chatBody = document.getElementById('typing-chat-body');
-            chatBody.scrollTop = chatBody.scrollHeight;
-            document.getElementById('chat-type-input').focus();
-        }
-
-        window.sendTypingMsg = async () => {
-            const input = document.getElementById('chat-type-input');
-            const val = input.value.trim();
-            if (!val) return;
-            
-            const t = currentData.typing;
-            const isCorrect = val === t.currentWord;
-            
-            const newMsg = { role: myRole, text: val, time: Date.now() };
-            t.messages.push(newMsg);
-            if (t.messages.length > 20) t.messages.shift();
-
-            if (isCorrect) {
-                t.scores[myRole]++;
-                t.currentWord = words[Math.floor(Math.random() * words.length)];
-            }
-
-            if (isBotMode) renderTyping();
-            else await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), { typing: t });
-            input.value = "";
-        };
-
-        // --- Perfect Grid Dots & Boxes ---
-        function renderDots() {
-            const d = currentData.dots; 
-            const size = 5; 
-            const gap = 64; 
-            const offset = 40;
-            const boxSize = gap - 4;
-
-            let html = `
-                <div class="flex flex-col items-center">
-                    <div class="flex justify-between w-full max-w-[320px] mb-8 font-black bg-slate-900 p-4 rounded-3xl border border-white/5">
-                        <div class="text-pink-500">زينبي: ${d.scores.z}</div>
-                        <div class="text-xs ${d.turn === myRole ? 'text-green-400 animate-pulse' : 'text-slate-500'} italic">${d.turn === myRole ? 'دورك' : 'انتظر...'}</div>
-                        <div class="text-cyan-500">فوفو: ${d.scores.f}</div>
-                    </div>
-
-                    <div class="relative bg-slate-950 p-4 rounded-[40px] border border-white/5" style="width: ${size*gap+20}px; height: ${size*gap+20}px;">
-            `;
-
-            // Boxes
-            for(let r=0; r<4; r++) for(let c=0; c<4; c++) {
-                const o = d.boxes.find(b => b.id === `b-${r}-${c}`)?.owner;
-                if(o) {
-                    html += `<div class="absolute flex items-center justify-center font-black rounded-xl transition-all duration-300" 
-                        style="top:${r*gap+offset+6}px; left:${c*gap+offset+6}px; width:${boxSize-8}px; height:${boxSize-8}px; 
-                        background:${o==='z'?'rgba(236,72,153,0.3)':'rgba(6,182,212,0.3)'}; border:1px solid ${o==='z'?'#ec4899':'#06b6d4'};">
-                        <span class="text-xl ${o==='z'?'text-pink-300':'text-cyan-300'}">${o==='z'?'Z':'F'}</span>
-                    </div>`;
-                }
-            }
-
-            // Horizontal Lines
-            for(let r=0; r<size; r++) for(let c=0; c<size-1; c++) {
-                const t = d.lines.includes(`h-${r}-${c}`);
-                html += `<div onclick="clickLine('h-${r}-${c}')" class="absolute cursor-pointer group" 
-                    style="top:${r*gap+offset-4}px; left:${c*gap+offset+10}px; width:${gap-20}px; height:12px; z-index:10;">
-                    <div class="w-full h-full rounded-full transition-all duration-200 ${t ? 'bg-white shadow-[0_0_10px_white]' : 'bg-white/5 group-hover:bg-white/20'}"></div>
-                </div>`;
-            }
-
-            // Vertical Lines
-            for(let r=0; r<size-1; r++) for(let c=0; c<size; c++) {
-                const t = d.lines.includes(`v-${r}-${c}`);
-                html += `<div onclick="clickLine('v-${r}-${c}')" class="absolute cursor-pointer group" 
-                    style="top:${r*gap+offset+10}px; left:${c*gap+offset-4}px; width:12px; height:${gap-20}px; z-index:10;">
-                    <div class="w-full h-full rounded-full transition-all duration-200 ${t ? 'bg-white shadow-[0_0_10px_white]' : 'bg-white/5 group-hover:bg-white/20'}"></div>
-                </div>`;
-            }
-
-            // Dots (Perfectly Centered)
-            for(let r=0; r<size; r++) for(let c=0; c<size; c++) {
-                html += `<div class="absolute bg-slate-400 w-3 h-3 rounded-full pointer-events-none shadow-[0_0_5px_black]" 
-                    style="top:${r*gap+offset-1}px; left:${c*gap+offset-1}px; z-index:20;"></div>`;
-            }
-
-            html += `</div></div>`;
-            document.getElementById('content').innerHTML = html;
-        }
-
-        window.clickLine = async (l) => {
-            const d = currentData.dots; if(d.turn!==myRole || d.lines.includes(l)) return;
-            d.lines.push(l); let cl = false;
-            for(let r=0; r<4; r++) for(let c=0; c<4; c++) {
-                if(!d.boxes.find(b=>b.id===`b-${r}-${c}`) && [`h-${r}-${c}`,`h-${r+1}-${c}`,`v-${r}-${c}`,`v-${r}-${c+1}`].every(x=>d.lines.includes(x))) { 
-                    d.boxes.push({id:`b-${r}-${c}`,owner:myRole}); 
-                    d.scores[myRole]++; cl=true; 
-                }
-            }
-            if(!cl) d.turn = (myRole==='z'?'f':'z');
-            if(isBotMode) renderDots(); else await updateDoc(doc(db,'artifacts',appId,'public', 'data', 'matches', gameId), {dots:d});
-        };
-
-        // --- Bot Logic ---
-        function startBotLogic() {
-            if (botInterval) clearInterval(botInterval);
-            botInterval = setInterval(() => {
-                if (!isBotMode || transitionLocked || !currentData) return;
-
-                if (currentData.gameType === 'typing' && Math.random() > 0.8) {
-                    const target = currentData.typing.currentWord;
-                    currentData.typing.messages.push({ role: 'f', text: target, time: Date.now() });
-                    currentData.typing.scores.f++;
-                    currentData.typing.currentWord = words[Math.floor(Math.random()*words.length)];
-                    renderTyping();
-                }
-
-                if (currentData.gameType === 'dots' && currentData.dots.turn === 'f') {
-                    const size = 5;
-                    const possible = [];
-                    for(let r=0; r<size; r++) for(let c=0; c<size-1; c++) if(!currentData.dots.lines.includes(`h-${r}-${c}`)) possible.push(`h-${r}-${c}`);
-                    for(let r=0; r<size-1; r++) for(let c=0; c<size; c++) if(!currentData.dots.lines.includes(`v-${r}-${c}`)) possible.push(`v-${r}-${c}`);
-                    if (possible.length > 0) {
-                        const l = possible[Math.floor(Math.random()*possible.length)];
-                        currentData.dots.lines.push(l);
-                        let cl = false;
-                        for(let r=0; r<4; r++) for(let c=0; c<4; c++) {
-                            if(!currentData.dots.boxes.find(b=>b.id===`b-${r}-${c}`) && [`h-${r}-${c}`,`h-${r+1}-${c}`,`v-${r}-${c}`,`v-${r}-${c+1}`].every(x=>currentData.dots.lines.includes(x))) { 
-                                d.boxes.push({id:`b-${r}-${c}`,owner:'f'}); 
-                                d.scores.f++; cl=true; 
-                            }
-                        }
-                        if(!cl) currentData.dots.turn = 'z';
-                        renderDots();
-                    }
-                }
-            }, 1500);
-        }
-
-        // --- Speed & XO Re-render ---
-        function renderSpeed() {
-            const s = currentData.speed;
-            if (s.winner && !transitionLocked) {
-                transitionLocked = true;
-                const winName = s.winner === 'z' ? 'زينبي' : 'فوفو';
-                document.getElementById('content').innerHTML = `<div class="text-center py-20"><h2 class="text-5xl font-black text-cyan-400 animate-pulse">فوز ${winName}! 🔥</h2></div>`;
-                setTimeout(() => selectGame('none'), 3000); return;
-            }
-            document.getElementById('content').innerHTML = `
-                <div class="relative w-full max-w-md h-32 bg-slate-900 rounded-[3rem] p-4 border-4 border-white/5 overflow-hidden mb-12 shadow-2xl">
-                    <div class="absolute h-full top-0 bg-gradient-to-l from-pink-500 via-purple-500 to-cyan-500 transition-all duration-150" style="width: ${s.score}%; left: 0;"></div>
-                    <div class="absolute inset-0 flex items-center justify-between px-10 font-black italic text-white mix-blend-difference"><span>ZINABI</span> <span>FOFO</span></div>
-                </div>
-                <button id="tap-btn" class="w-64 h-64 bg-red-600 rounded-full shadow-[0_20px_0px_#7f1d1d] active:shadow-none active:translate-y-[20px] flex items-center justify-center text-7xl select-none transition-all">🥊</button>
-            `;
-            const btn = document.getElementById('tap-btn');
-            const hit = async (e) => {
-                e.preventDefault();
-                let val = currentData.speed.score + (myRole === 'z' ? -4 : 4);
-                let win = null;
-                if (val <= 0) { val = 0; win = 'z'; }
-                if (val >= 100) { val = 100; win = 'f'; }
-                if (isBotMode) { currentData.speed.score = val; currentData.speed.winner = win; renderSpeed(); }
-                else await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), { "speed.score": val, "speed.winner": win });
-            };
-            btn.onmousedown = hit; btn.ontouchstart = hit;
-        }
-
-        function renderXO() {
-            const xo = currentData.xo;
-            const win = checkWinnerXO(xo.board);
-            if (win && !transitionLocked) {
-                transitionLocked = true;
-                const msg = win === 'draw' ? "تعادل!" : `فوز ${win === 'z' ? 'زينبي' : 'فوفو'}!`;
-                document.getElementById('content').innerHTML = `<div class="text-center py-20"><h2 class="text-5xl font-black text-pink-500">${msg}</h2></div>`;
-                setTimeout(() => selectGame('none'), 2500); return;
-            }
-            let html = `<div class="mb-10 text-center font-black text-2xl ${xo.turn === myRole ? 'text-green-400' : 'text-slate-600'}">${xo.turn === myRole ? 'دورك للعب' : 'انتظر الخصم'}</div>`;
-            html += `<div class="grid grid-cols-3 gap-6 w-80 mx-auto">`;
-            xo.board.forEach((cell, i) => {
-                html += `<button onclick="playXO(${i})" class="h-24 bg-slate-900 border border-white/10 rounded-3xl text-5xl font-black shadow-2xl active:scale-90 transition-all">${cell === 'z' ? '❌' : (cell === 'f' ? '⭕' : '')}</button>`;
-            });
-            html += `</div>`;
-            document.getElementById('content').innerHTML = html;
-        }
-
-        window.playXO = async (i) => {
-            if (transitionLocked || currentData.xo.turn !== myRole || currentData.xo.board[i] !== "") return;
-            const b = [...currentData.xo.board]; b[i] = myRole;
-            const t = myRole === 'z' ? 'f' : 'z';
-            if (isBotMode) { currentData.xo.board = b; currentData.xo.turn = t; renderXO(); }
-            else await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', gameId), { "xo.board": b, "xo.turn": t });
-        };
-
-        function checkWinnerXO(board) {
-            const wins = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
-            for (let w of wins) if (board[w[0]] && board[w[0]] === board[w[1]] && board[w[0]] === board[w[2]]) return board[w[0]];
-            return board.includes("") ? null : "draw";
-        }
-
-        window.exit = () => { gameId=null; isBotMode=false; if(botInterval) clearInterval(botInterval); showView('main-menu'); };
-    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;700;900&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
-        body { font-family: 'Cairo', sans-serif; background: #020617; color: white; overflow: hidden; touch-action: none; -webkit-tap-highlight-color: transparent; }
-        .btn-game { @apply py-6 bg-slate-900 border border-white/5 rounded-[2.5rem] font-black flex flex-col items-center gap-3 active:scale-95 transition-all shadow-xl; }
-        ::-webkit-scrollbar { width: 0; }
+        body { font-family: 'Cairo', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .custom-scrollbar::-webkit-scrollbar { width: 0px; }
+        .glass { background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(15px); border: 1px solid rgba(255, 255, 255, 0.2); }
+        .tab-active { background: white; color: #ec4899; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        input:focus, textarea:focus { font-size: 16px !important; }
+        @keyframes pulse-slow { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        .animate-pulse-slow { animation: pulse-slow 3s infinite; }
     </style>
 </head>
-<body class="h-screen flex items-center justify-center overflow-hidden">
+<body class="bg-[#4fa3e3] h-[100dvh] overflow-hidden">
 
-    <div id="loading" class="fixed inset-0 z-[3000] bg-slate-950 flex items-center justify-center text-pink-500">
-        <div class="w-12 h-12 border-4 border-current border-t-transparent rounded-full animate-spin"></div>
-    </div>
+    <!-- شاشة الطقس (الحماية) -->
+    <div id="lock-screen" class="flex flex-col items-center justify-center h-full p-4 transition-all duration-700">
+        <div class="w-full max-w-[380px] glass rounded-[2.5rem] p-8 shadow-2xl text-white">
+            <div class="flex justify-between items-start mb-8 text-right">
+                <div>
+                    <h2 class="text-lg font-bold">بغداد</h2>
+                    <h1 class="text-7xl font-light tracking-tighter">31°</h1>
+                    <p class="text-xs opacity-80 mt-1">الطقس: مشمس غالباً</p>
+                </div>
+                <i data-lucide="sun" class="text-yellow-300 animate-pulse-slow w-14 h-14"></i>
+            </div>
 
-    <div id="main-menu" class="w-full max-w-sm p-8 text-center animate-in fade-in zoom-in duration-500">
-        <h1 class="text-7xl font-black mb-12 italic bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-400 bg-clip-text text-transparent tracking-tighter">ZENABI & FOFO</h1>
-        <button onclick="startBotMode()" class="w-full py-6 bg-white text-slate-950 rounded-[2.5rem] font-black text-2xl shadow-2xl mb-8 active:scale-95 transition-all">🤖 العب ضد البوت</button>
-        <div class="space-y-4">
-            <button onclick="createRoom()" class="w-full py-5 bg-pink-600 rounded-[2rem] font-black text-lg active:scale-95 transition-all">إنشاء غرفة</button>
-            <div class="flex gap-2">
-                <input id="room-input" type="number" placeholder="رقم الغرفة" class="flex-1 bg-slate-900 rounded-[1.5rem] px-6 py-4 text-center font-bold text-xl border border-white/5 outline-none">
-                <button onclick="joinRoom()" class="px-8 py-4 bg-cyan-600 rounded-[1.5rem] font-black active:scale-95">دخول</button>
+            <form id="entry-form" class="relative mb-8">
+                <input type="text" id="pass-input" placeholder="ابحث عن مدينة..." 
+                    class="w-full py-4 px-10 rounded-2xl bg-black/20 border border-white/10 focus:outline-none focus:ring-2 focus:ring-white/30 text-right placeholder-white/40 text-sm text-white">
+                <i data-lucide="search" class="absolute left-3 top-4 text-white/40 w-5 h-5"></i>
+            </form>
+
+            <div class="grid grid-cols-5 gap-1 opacity-80 text-[10px] font-medium text-center">
+                <div class="bg-white/5 py-2 rounded-lg"><span>أحد</span><i data-lucide="cloud-sun" class="w-4 h-4 mx-auto my-1"></i><span>29°</span></div>
+                <div class="bg-white/5 py-2 rounded-lg"><span>اثنين</span><i data-lucide="sun" class="w-4 h-4 mx-auto my-1"></i><span>32°</span></div>
+                <div class="bg-white/5 py-2 rounded-lg"><span>ثلاثاء</span><i data-lucide="cloud" class="w-4 h-4 mx-auto my-1"></i><span>28°</span></div>
+                <div class="bg-white/5 py-2 rounded-lg"><span>أربعاء</span><i data-lucide="sun" class="w-4 h-4 mx-auto my-1"></i><span>33°</span></div>
+                <div class="bg-white/5 py-2 rounded-lg"><span>خميس</span><i data-lucide="cloud-sun" class="w-4 h-4 mx-auto my-1"></i><span>30°</span></div>
             </div>
         </div>
     </div>
 
-    <div id="waiting-room" class="hidden text-center p-10 animate-pulse">
-        <div class="bg-slate-900/50 p-14 rounded-[60px] border border-white/5 mb-8">
-            <div class="text-xs text-slate-500 font-bold uppercase tracking-widest mb-4">كود الغرفة</div>
-            <h2 id="room-id" class="text-8xl font-black italic tracking-tighter">0000</h2>
-        </div>
-        <p class="font-black text-pink-500 uppercase">بانتظار دخول الخصم...</p>
+    <!-- شاشة عالمنا (المحتوى الخاص) -->
+    <div id="private-screen" class="hidden h-full bg-[#FFF5F7] flex flex-col transition-all duration-700">
+        <header class="bg-white/95 px-4 py-3 flex justify-between items-center border-b border-pink-100 shadow-sm z-50">
+            <div class="flex items-center gap-2">
+                <div class="w-7 h-7 bg-pink-500 rounded-full flex items-center justify-center shadow-md">
+                    <i data-lucide="heart" class="text-white fill-white w-4 h-4"></i>
+                </div>
+                <span class="font-black text-gray-800 text-base">عالمنا</span>
+            </div>
+            
+            <div class="flex bg-gray-100 p-1 rounded-xl">
+                <button onclick="showTab('chat')" id="btn-chat" class="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all tab-active">الدردشة</button>
+                <button onclick="showTab('posts')" id="btn-posts" class="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all text-gray-500">الذكريات</button>
+                <button onclick="showTab('music')" id="btn-music" class="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all text-gray-500">الأغاني</button>
+            </div>
+
+            <button onclick="location.reload()" class="p-1 text-gray-400"><i data-lucide="log-out" class="w-5 h-5"></i></button>
+        </header>
+
+        <main class="flex-1 flex flex-col overflow-hidden w-full max-w-md mx-auto bg-white relative">
+            
+            <!-- تبويب الدردشة -->
+            <div id="tab-chat" class="flex flex-col h-full bg-gray-50/40">
+                <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar text-right">
+                    <!-- الرسائل تظهر هنا -->
+                </div>
+                <form id="chat-form" class="p-3 bg-white border-t border-pink-50 flex gap-2 pb-6">
+                    <input type="text" id="msg-input" placeholder="اكتب رسالة..." class="flex-1 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-pink-300 outline-none">
+                    <button type="submit" class="bg-pink-500 text-white p-3 rounded-xl shadow-md"><i data-lucide="send" class="w-5 h-5"></i></button>
+                </form>
+            </div>
+
+            <!-- تبويب المنشورات -->
+            <div id="tab-posts" class="hidden h-full overflow-y-auto p-4 space-y-5 bg-pink-50/20 pb-10">
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-pink-100">
+                    <textarea id="post-content" placeholder="انشر ذكرى جديدة..." class="w-full resize-none border-none focus:ring-0 text-gray-700 text-sm font-medium" rows="2"></textarea>
+                    <div class="flex items-center gap-2 border-t pt-3 mt-1 text-right">
+                        <input type="text" id="post-image" placeholder="رابط صورة" class="flex-1 text-[10px] outline-none bg-gray-50 rounded-lg px-2 py-2">
+                        <button onclick="createPost()" class="bg-pink-500 text-white px-5 py-2 rounded-lg text-[10px] font-black">نشر</button>
+                    </div>
+                </div>
+                <div id="posts-list" class="space-y-4"></div>
+            </div>
+
+            <!-- تبويب الموسيقى -->
+            <div id="tab-music" class="hidden h-full overflow-y-auto p-4 space-y-5 bg-slate-900 text-white pb-10">
+                <div class="bg-white/5 p-5 rounded-2xl border border-white/10">
+                    <h3 class="flex items-center gap-2 font-bold mb-3 text-pink-400 text-sm"><i data-lucide="music" class="w-4 h-4"></i> إضافة يوتيوب</h3>
+                    <input type="text" id="song-title" placeholder="اسم الأغنية" class="w-full bg-white/10 rounded-xl px-3 py-2 mb-2 outline-none text-xs border border-white/10">
+                    <input type="text" id="song-url" placeholder="رابط فيديو YouTube" class="w-full bg-white/10 rounded-xl px-3 py-2 mb-3 outline-none text-xs border border-white/10">
+                    <button onclick="addSong()" class="w-full bg-pink-500 py-2.5 rounded-xl font-bold text-xs shadow-lg">إضافة</button>
+                </div>
+                <div id="songs-list" class="space-y-4"></div>
+            </div>
+        </main>
+
+        <footer class="py-1.5 text-center text-[9px] text-gray-400 bg-white border-t border-gray-50 uppercase tracking-widest">
+            عالمنا السري ❤️
+        </footer>
     </div>
 
-    <div id="game-selector" class="hidden w-full max-w-sm p-8 text-center animate-in slide-in-from-bottom duration-500">
-        <h2 class="text-3xl font-black mb-8 italic">اختر التحدي</h2>
-        <div class="grid grid-cols-1 gap-4">
-            <button onclick="selectGame('typing')" class="btn-game border-blue-500/20">
-                <span class="text-4xl">💬</span>
-                <span>تحدي الكتابة (15 نقطة)</span>
-            </button>
-            <button onclick="selectGame('dots')" class="btn-game border-orange-500/20">
-                <span class="text-4xl">📐</span>
-                <span>المربعات (دقة عالية)</span>
-            </button>
-            <button onclick="selectGame('speed')" class="btn-game border-red-500/20">
-                <span class="text-4xl">🥊</span>
-                <span>تحدي الضغط</span>
-            </button>
-            <button onclick="selectGame('xo')" class="btn-game border-pink-500/20">
-                <span class="text-4xl">❌</span>
-                <span>لعبة إكس أوه</span>
-            </button>
-        </div>
-    </div>
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
 
-    <div id="game-view" class="hidden fixed inset-0 flex flex-col items-center justify-center bg-[#020617] h-full overflow-hidden">
-        <div class="absolute top-6 w-full px-8 flex justify-between items-center z-50">
-            <button onclick="exit()" class="bg-white/5 px-6 py-2 rounded-full text-[10px] font-black border border-white/10 uppercase italic">↩ خروج</button>
-            <div class="text-[10px] text-slate-600 font-black tracking-widest uppercase">Z & F Arena</div>
-        </div>
-        <div id="content" class="w-full h-full flex flex-col items-center justify-center p-4"></div>
-    </div>
+        // Configuration
+        const firebaseConfig = JSON.parse('__firebase_config');
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const appId = '__app_id' || 'weather-secret-app';
 
+        let currentUser = null;
+
+        // Initialize Icons
+        lucide.createIcons();
+
+        // 1. Entry Logic
+        document.getElementById('entry-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const val = document.getElementById('pass-input').value.trim();
+            if (val === 'فؤاد') {
+                document.getElementById('lock-screen').classList.add('hidden');
+                document.getElementById('private-screen').classList.remove('hidden');
+                initApp();
+            }
+        });
+
+        async function initApp() {
+            const userCred = await signInAnonymously(auth);
+            currentUser = userCred.user;
+            
+            // Sync Messages
+            const chatCol = collection(db, 'artifacts', appId, 'public', 'data', 'messages');
+            onSnapshot(chatCol, (snap) => {
+                const msgs = snap.docs.map(d => d.data()).sort((a,b) => a.timestamp - b.timestamp);
+                const container = document.getElementById('chat-messages');
+                container.innerHTML = msgs.map(m => `
+                    <div class="flex ${m.sender === currentUser.uid ? 'justify-end' : 'justify-start'}">
+                        <div class="max-w-[85%] px-3 py-2 rounded-2xl shadow-sm text-sm ${m.sender === currentUser.uid ? 'bg-pink-500 text-white rounded-tl-none' : 'bg-white text-gray-800 border border-pink-50 rounded-tr-none'}">
+                            ${m.text}
+                            <span class="text-[8px] mt-1 opacity-50 block text-left">${new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                        </div>
+                    </div>
+                `).join('');
+                container.scrollTop = container.scrollHeight;
+            });
+
+            // Sync Posts
+            const postsCol = collection(db, 'artifacts', appId, 'public', 'data', 'posts');
+            onSnapshot(postsCol, (snap) => {
+                const pts = snap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b) => b.timestamp - a.timestamp);
+                document.getElementById('posts-list').innerHTML = pts.map(p => `
+                    <div class="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-50 p-4 text-right">
+                        <div class="flex items-center gap-2 mb-2">
+                             <div class="w-3 h-3 bg-pink-400 rounded-full"></div>
+                             <span class="text-[9px] text-gray-400 font-bold">${new Date(p.timestamp).toLocaleDateString()}</span>
+                        </div>
+                        <p class="text-gray-800 leading-snug mb-3 text-sm">${p.content}</p>
+                        ${p.imageUrl ? `<img src="${p.imageUrl}" class="w-full rounded-xl object-cover max-h-64" onerror="this.style.display='none'">` : ''}
+                    </div>
+                `).join('');
+            });
+
+            // Sync Songs
+            const songsCol = collection(db, 'artifacts', appId, 'public', 'data', 'songs');
+            onSnapshot(songsCol, (snap) => {
+                const sgs = snap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b) => b.timestamp - a.timestamp);
+                document.getElementById('songs-list').innerHTML = sgs.map(s => `
+                    <div class="bg-white/5 rounded-2xl overflow-hidden border border-white/10">
+                        <div class="p-3 flex justify-between items-center text-right">
+                            <button onclick="window.deleteItem('songs', '${s.id}')" class="text-white/20"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                            <span class="font-bold text-xs text-pink-200">${s.title}</span>
+                        </div>
+                        <div class="aspect-video w-full">
+                            <iframe src="${s.url}" class="w-full h-full" frameborder="0" allowfullscreen></iframe>
+                        </div>
+                    </div>
+                `).join('');
+                lucide.createIcons();
+            });
+        }
+
+        // Send Message
+        document.getElementById('chat-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const input = document.getElementById('msg-input');
+            if(!input.value.trim() || !currentUser) return;
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), {
+                text: input.value,
+                sender: currentUser.uid,
+                timestamp: Date.now()
+            });
+            input.value = '';
+        });
+
+        // Global functions for buttons
+        window.showTab = (tab) => {
+            ['chat', 'posts', 'music'].forEach(t => {
+                document.getElementById(`tab-${t}`).classList.add('hidden');
+                document.getElementById(`btn-${t}`).classList.remove('tab-active');
+                document.getElementById(`btn-${t}`).classList.add('text-gray-500');
+            });
+            document.getElementById(`tab-${tab}`).classList.remove('hidden');
+            document.getElementById(`btn-${tab}`).classList.add('tab-active');
+            lucide.createIcons();
+        };
+
+        window.createPost = async () => {
+            const content = document.getElementById('post-content').value;
+            const image = document.getElementById('post-image').value;
+            if(!content.trim()) return;
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'posts'), {
+                content, imageUrl: image, timestamp: Date.now()
+            });
+            document.getElementById('post-content').value = '';
+            document.getElementById('post-image').value = '';
+        };
+
+        window.addSong = async () => {
+            const title = document.getElementById('song-title').value;
+            let url = document.getElementById('song-url').value;
+            if(!url.trim()) return;
+            
+            // Youtube embed conversion
+            if(url.includes('watch?v=')) url = url.replace('watch?v=', 'embed/').split('&')[0];
+            else if(url.includes('youtu.be/')) url = 'https://www.youtube.com/embed/' + url.split('/').pop();
+
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'songs'), {
+                title: title || 'فيديو جديد', url, timestamp: Date.now()
+            });
+            document.getElementById('song-title').value = '';
+            document.getElementById('song-url').value = '';
+        };
+
+        window.deleteItem = async (col, id) => {
+            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', col, id));
+        };
+    </script>
 </body>
 </html>
 
